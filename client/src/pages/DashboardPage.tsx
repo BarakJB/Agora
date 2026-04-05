@@ -53,7 +53,7 @@ export default function DashboardPage() {
   }
 
   return (
-    <div className="p-8 space-y-8">
+    <div className="p-8 space-y-6">
       {/* Page Heading */}
       <section className="flex flex-col lg:flex-row justify-between lg:items-end gap-4">
         <div>
@@ -79,23 +79,23 @@ export default function DashboardPage() {
         </div>
       </section>
 
-      {/* Bento Grid */}
-      <div className="grid grid-cols-12 gap-6">
+      {/* Summary Cards — compact row */}
+      <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
         {/* Current Salary Card */}
-        <div className="col-span-12 lg:col-span-5 bg-surface-container-lowest rounded-lg p-8 shadow-editorial relative overflow-hidden group">
-          <div className="absolute -left-10 -top-10 w-40 h-40 bg-primary/5 rounded-full blur-3xl group-hover:bg-primary/10 transition-colors" />
+        <div className="bg-surface-container-lowest rounded-lg p-5 shadow-editorial relative overflow-hidden group">
+          <div className="absolute -left-6 -top-6 w-24 h-24 bg-primary/5 rounded-full blur-2xl group-hover:bg-primary/10 transition-colors" />
           <div className="relative z-10">
-            <p className="text-xs font-bold uppercase tracking-widest text-primary/60 mb-6 font-headline">
+            <p className="text-[10px] font-bold uppercase tracking-widest text-primary/60 mb-3 font-headline">
               שכר נצבר נכון להיום
             </p>
-            <div className="flex items-baseline gap-2">
-              <span className="text-4xl md:text-6xl font-black font-headline text-primary">
+            <div className="flex items-baseline gap-1.5">
+              <span className="text-2xl md:text-3xl font-black font-headline text-primary">
                 {fmt(dashboard.currentSalary)}
               </span>
-              <span className="text-2xl font-bold text-primary/40">&lrm;&#8362;</span>
+              <span className="text-lg font-bold text-primary/40">&lrm;&#8362;</span>
             </div>
             {dashboard.growthPct > 0 && (
-              <div className="mt-8 flex items-center gap-2 text-secondary font-semibold">
+              <div className="mt-3 flex items-center gap-1.5 text-secondary font-semibold text-sm">
                 <Icon name="trending_up" size="sm" />
                 <span>{dashboard.growthPct}% מעל החודש הקודם</span>
               </div>
@@ -103,7 +103,7 @@ export default function DashboardPage() {
             {isEmpty && (
               <button
                 onClick={() => navigate('/upload')}
-                className="mt-8 bg-primary-container text-white px-6 py-2.5 rounded-lg font-semibold text-sm flex items-center gap-2"
+                className="mt-3 bg-primary-container text-white px-4 py-1.5 rounded-lg font-semibold text-xs flex items-center gap-1.5"
               >
                 <Icon name="upload_file" size="sm" />
                 העלה קובץ עמלות
@@ -113,28 +113,59 @@ export default function DashboardPage() {
         </div>
 
         {/* Predicted Salary Card */}
-        <div className="col-span-12 lg:col-span-7 bg-secondary-container rounded-lg p-8 relative overflow-hidden flex items-center">
+        <div className="bg-secondary-container rounded-lg p-5 relative overflow-hidden flex items-center">
           <div className="flex-1">
-            <p className="text-xs font-bold uppercase tracking-widest text-on-secondary-container mb-4 font-headline">
+            <p className="text-[10px] font-bold uppercase tracking-widest text-on-secondary-container mb-3 font-headline">
               תחזית לסוף חודש
             </p>
-            <div className="flex items-baseline gap-2">
-              <span className="text-4xl md:text-6xl font-black font-headline text-on-secondary-container">
+            <div className="flex items-baseline gap-1.5">
+              <span className="text-2xl md:text-3xl font-black font-headline text-on-secondary-container">
                 {fmt(dashboard.predictedSalary)}
               </span>
-              <span className="text-2xl font-bold text-on-secondary-container/60">&lrm;&#8362;</span>
+              <span className="text-lg font-bold text-on-secondary-container/60">&lrm;&#8362;</span>
             </div>
-            <p className="mt-4 text-on-secondary-container/80 font-medium max-w-xs">
+            <p className="mt-2 text-on-secondary-container/80 font-medium text-xs leading-relaxed">
               {isEmpty
                 ? 'התחזית תתעדכן אוטומטית עם הוספת נתונים'
                 : 'מבוסס על צבר פוליסות נוכחי ושיעור המרה ממוצע של 24%'}
             </p>
           </div>
-          <div className="hidden md:flex w-48 h-48 bg-white/20 rounded-full backdrop-blur-xl items-center justify-center">
-            <Icon name="auto_graph" filled className="text-on-secondary-container" size="xl" />
+          <div className="hidden lg:flex w-14 h-14 bg-white/20 rounded-full backdrop-blur-xl items-center justify-center shrink-0">
+            <Icon name="auto_graph" filled className="text-on-secondary-container" size="sm" />
           </div>
         </div>
 
+        {/* Campaign / Bonus Card */}
+        <div className="relative rounded-lg overflow-hidden">
+          <div className="absolute inset-0 editorial-gradient z-0" />
+          <div className="relative z-10 p-5 h-full flex flex-col justify-center">
+            <span className="bg-secondary text-white text-[10px] font-bold px-2.5 py-0.5 rounded-full w-fit mb-2">
+              {dashboard.bonusCurrent >= dashboard.bonusTarget ? 'יעד הושג!' : 'מבצע בונוס פעיל'}
+            </span>
+            <h3 className="text-lg font-black text-white font-headline leading-tight mb-2">
+              יעד פוליסות חיים: בונוס {fmt(dashboard.bonusAmount)}&#8362;
+            </h3>
+            <p className="text-white/70 text-xs mb-3 leading-relaxed">
+              {isEmpty
+                ? 'התחל להוסיף פוליסות כדי להתקדם ליעד הבונוס שלך'
+                : `הגע ל-${dashboard.bonusTarget} פוליסות עד סוף החודש. נשארו ${Math.max(0, dashboard.bonusTarget - dashboard.bonusCurrent)}!`}
+            </p>
+            <div className="w-full bg-white/10 h-1.5 rounded-full overflow-hidden">
+              <div
+                className="bg-secondary h-full rounded-full transition-all duration-700 ease-out"
+                style={{ width: `${Math.min(100, (dashboard.bonusCurrent / dashboard.bonusTarget) * 100)}%` }}
+              />
+            </div>
+            <div className="mt-1.5 flex justify-between text-[9px] font-bold text-white/50 tracking-widest uppercase">
+              <span>{dashboard.bonusCurrent} בוצעו</span>
+              <span>{dashboard.bonusTarget} היעד</span>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      {/* Bottom Grid */}
+      <div className="grid grid-cols-12 gap-6">
         {/* Monthly Metrics */}
         <div className="col-span-12 lg:col-span-4 bg-surface-container-low rounded-lg p-6 space-y-6">
           <h3 className="text-sm font-bold uppercase tracking-widest text-on-surface-variant font-headline">
@@ -147,38 +178,8 @@ export default function DashboardPage() {
           </div>
         </div>
 
-        {/* Campaign Banner */}
-        <div className="col-span-12 lg:col-span-8 relative h-full min-h-[280px] rounded-lg overflow-hidden">
-          <div className="absolute inset-0 editorial-gradient z-0" />
-          <div className="relative z-10 p-8 lg:p-10 h-full flex flex-col justify-center">
-            <span className="bg-secondary text-white text-[10px] font-bold px-3 py-1 rounded-full w-fit mb-4">
-              {dashboard.bonusCurrent >= dashboard.bonusTarget ? 'יעד הושג!' : 'מבצע בונוס פעיל'}
-            </span>
-            <h3 className="text-2xl lg:text-3xl font-black text-white font-headline leading-tight mb-4">
-              יעד פוליסות חיים:
-              <br />
-              בונוס של {fmt(dashboard.bonusAmount)}&#8362;
-            </h3>
-            <p className="text-white/70 max-w-md mb-8">
-              {isEmpty
-                ? 'התחל להוסיף פוליס��ת כדי להתקדם ליעד הבונוס שלך'
-                : `הגע ל-${dashboard.bonusTarget} פוליסות חדשות עד סוף החודש. נשארו עוד ${Math.max(0, dashboard.bonusTarget - dashboard.bonusCurrent)}!`}
-            </p>
-            <div className="w-full max-w-md bg-white/10 h-2 rounded-full overflow-hidden">
-              <div
-                className="bg-secondary h-full rounded-full transition-all duration-700 ease-out"
-                style={{ width: `${Math.min(100, (dashboard.bonusCurrent / dashboard.bonusTarget) * 100)}%` }}
-              />
-            </div>
-            <div className="mt-3 flex justify-between max-w-md text-[10px] font-bold text-white/50 tracking-widest uppercase">
-              <span>{dashboard.bonusCurrent} בוצעו</span>
-              <span>{dashboard.bonusTarget} היעד</span>
-            </div>
-          </div>
-        </div>
-
         {/* Commission Table */}
-        <div className="col-span-12 bg-surface-container-low rounded-lg overflow-hidden">
+        <div className="col-span-12 lg:col-span-8 bg-surface-container-low rounded-lg overflow-hidden">
           <div className="px-8 py-6 flex justify-between items-center bg-surface-container-lowest">
             <h3 className="text-lg font-black font-headline text-on-surface">
               פירוט עמלות — עסקאות אחרונות
