@@ -575,11 +575,3 @@ describe('Commissions API', () => {
   });
 });
 
-// ==================== Validate Middleware Bug (Express 5) ====================
-// NOTE: Routes that use validate({ query: ... }) fail with Express 5 because
-// req.query is read-only. This is a known bug in the validate middleware.
-// Affected routes: GET /api/v1/policies, GET /api/v1/commissions,
-//   GET /api/v1/commissions/summary, GET /api/v1/uploads
-// See: validate.ts line 28 — assigning to req.query throws.
-// FIX: Parse query params manually without reassigning req.query,
-// or use req.parsedQuery pattern.
