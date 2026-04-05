@@ -1,4 +1,5 @@
 import type { Request, Response, NextFunction } from 'express';
+import { logger } from '../config/logger.js';
 
 export class AppError extends Error {
   constructor(
@@ -19,7 +20,15 @@ export function errorHandler(
   const statusCode = err instanceof AppError ? err.statusCode : 500;
   const message = err instanceof AppError ? err.message : 'Internal server error';
 
-  console.error(`[ERROR] ${statusCode}: ${err.message}`);
+  logger.error(
+    {
+      err,
+      statusCode,
+      requestId: res.locals?.requestId,
+      userId: res.locals?.agentId,
+    },
+    message,
+  );
 
   res.status(statusCode).json({
     data: null,

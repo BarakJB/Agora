@@ -1,7 +1,7 @@
 import express from 'express';
 import cors from 'cors';
 import helmet from 'helmet';
-import morgan from 'morgan';
+import pinoHttp from 'pino-http';
 import { authRouter } from './routes/auth.routes.js';
 import { agentRouter } from './routes/agent.routes.js';
 import { policyRouter } from './routes/policy.routes.js';
@@ -10,14 +10,58 @@ import { taxRouter } from './routes/tax.routes.js';
 import { uploadRouter } from './routes/upload.routes.js';
 import { requireAuth } from './middleware/auth.middleware.js';
 import { errorHandler } from './middleware/errorHandler.js';
+import { requestId } from './middleware/requestId.js';
+import { logger } from './config/logger.js';
 
 const app = express();
 
 app.use(helmet());
-app.use(cors({ origin: 'http://localhost:5173' }));
+
+const allowedOrigins = process.env.ALLOWED_ORIGINS
+  ? process.env.ALLOWED_ORIGINS.split(',').map((o) => o.trim())
+  : ['http://localhost:5173'];
+
+app.use(
+  cors({
+    origin(origin, callback) {
+      if (!origin || allowedOrigins.includes(origin)) {
+        callback(null, true);
+      } else {
+        callback(new Error('Not allowed by CORS'));
+      }
+    },
+  }),
+);
+
+app.use(requestId);
+
 if (process.env.NODE_ENV !== 'test') {
-  app.use(morgan('dev'));
+  app.use(
+    pinoHttp({
+      logger,
+      genReqId(req, res) {
+        return (res as unknown as { locals?: { requestId?: string } }).locals?.requestId ?? 'unknown';
+      },
+      customProps(_req, res) {
+        return {
+          userId: (res as unknown as { locals?: { agentId?: string } }).locals?.agentId,
+        };
+      },
+      serializers: {
+        req(req) {
+          return {
+            method: req.method,
+            url: req.url,
+          };
+        },
+        res(res) {
+          return { statusCode: res.statusCode };
+        },
+      },
+    }),
+  );
 }
+
 app.use(express.json());
 
 // Health check (public)
