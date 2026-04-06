@@ -581,3 +581,186 @@ export async function resolveInsuranceCompanyId(name: string): Promise<string | 
   );
   return rows.length > 0 ? (rows[0].id as string) : null;
 }
+
+// ============ Contracts (for prediction engine) ============
+
+export async function getContractForDeal(
+  agentId: string,
+  insuranceCompany: string,
+  productType: string,
+  asOfDate: string,
+): Promise<{
+  commissionPct: number;
+  recurringPct: number;
+  volumePct: number;
+} | null> {
+  const [rows] = await pool.query<RowDataPacket[]>(
+    `SELECT c.commission_pct, c.recurring_pct, c.volume_pct
+     FROM contracts c
+     JOIN insurance_companies ic ON ic.id = c.insurance_company_id
+     WHERE c.agent_id = ? AND ic.name = ? AND c.product_type = ?
+       AND c.effective_from <= ? AND (c.effective_to IS NULL OR c.effective_to >= ?)
+     ORDER BY c.effective_from DESC
+     LIMIT 1`,
+    [agentId, insuranceCompany, productType, asOfDate, asOfDate],
+  );
+  if (rows.length === 0) return null;
+  return {
+    commissionPct: Number(rows[0].commission_pct),
+    recurringPct: Number(rows[0].recurring_pct),
+    volumePct: Number(rows[0].volume_pct),
+  };
+}
+
+export async function getActivePoliciesForAgent(agentId: string): Promise<Policy[]> {
+  const [rows] = await pool.query<RowDataPacket[]>(
+    `${POLICY_SELECT} WHERE p.agent_id = ? AND p.status = 'active' ORDER BY p.start_date DESC LIMIT 5000`,
+    [agentId],
+  );
+  return rows.map(toPolicy);
+}
+
+export async function getCommissionsForPeriodRange(
+  agentId: string,
+  fromPeriod: string,
+  toPeriod: string,
+): Promise<Commission[]> {
+  const [rows] = await pool.query<RowDataPacket[]>(
+    `${COMMISSION_SELECT} WHERE cm.agent_id = ? AND cm.period >= ? AND cm.period <= ? ORDER BY cm.period ASC LIMIT 10000`,
+    [agentId, fromPeriod, toPeriod],
+  );
+  return rows.map(toCommission);
+}
+
+export async function getAgentPolicyCountByType(
+  agentId: string,
+  productType: string,
+): Promise<number> {
+  const [rows] = await pool.query<RowDataPacket[]>(
+    "SELECT COUNT(*) AS total FROM policies WHERE agent_id = ? AND product_type = ? AND status = 'active'",
+    [agentId, productType],
+  );
+  return rows[0].total as number;
+}
+
+// ============ Commission Reports ============
+
+export interface CommissionReportRecord {
+  id: string;
+  uploadId: string;
+  agentId: string;
+  insuranceCompanyId: string | null;
+  reportType: string;
+  period: string | null;
+  recordCount: number;
+  skippedRows: number;
+  errorCount: number;
+  totalCommission: number;
+  totalPremium: number;
+  sheetName: string | null;
+  status: string;
+  createdAt: string;
+}
+
+export async function createCommissionReport(data: {
+  id: string;
+  uploadId: string;
+  agentId: string;
+  insuranceCompanyId: string | null;
+  reportType: string;
+  period: string | null;
+  recordCount: number;
+  skippedRows: number;
+  errorCount: number;
+  totalCommission: number;
+  totalPremium: number;
+  sheetName: string | null;
+  errorDetails: unknown[] | null;
+}): Promise<void> {
+  await pool.query<ResultSetHeader>(
+    `INSERT INTO commission_reports
+      (id, upload_id, agent_id, insurance_company_id, report_type, period,
+       record_count, skipped_rows, error_count, total_commission, total_premium,
+       sheet_name, error_details)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+    [
+      data.id, data.uploadId, data.agentId, data.insuranceCompanyId,
+      data.reportType, data.period, data.recordCount, data.skippedRows,
+      data.errorCount, data.totalCommission, data.totalPremium,
+      data.sheetName, data.errorDetails ? JSON.stringify(data.errorDetails) : null,
+    ],
+  );
+}
+
+export async function getCommissionReportsByUpload(uploadId: string): Promise<CommissionReportRecord[]> {
+  const [rows] = await pool.query<RowDataPacket[]>(
+    `SELECT id, upload_id, agent_id, insurance_company_id, report_type, period,
+            record_count, skipped_rows, error_count, total_commission, total_premium,
+            sheet_name, status, created_at
+     FROM commission_reports
+     WHERE upload_id = ?
+     ORDER BY created_at ASC`,
+    [uploadId],
+  );
+  return rows.map((r) => ({
+    id: r.id,
+    uploadId: r.upload_id,
+    agentId: r.agent_id,
+    insuranceCompanyId: r.insurance_company_id,
+    reportType: r.report_type,
+    period: r.period,
+    recordCount: r.record_count,
+    skippedRows: r.skipped_rows,
+    errorCount: r.error_count,
+    totalCommission: Number(r.total_commission),
+    totalPremium: Number(r.total_premium),
+    sheetName: r.sheet_name,
+    status: r.status,
+    createdAt: r.created_at?.toISOString?.() ?? r.created_at,
+  }));
+}
+
+// ============ Commission Rules ============
+
+export interface CommissionRuleRecord {
+  id: string;
+  insuranceCompanyId: string;
+  productType: string;
+  ruleType: string;
+  delayMonths: number | null;
+  delayBusinessDays: number | null;
+  ratePct: number | null;
+  description: string | null;
+  isActive: boolean;
+}
+
+export async function getCommissionRules(
+  insuranceCompanyId: string,
+  productType?: string,
+): Promise<CommissionRuleRecord[]> {
+  let sql = `SELECT id, insurance_company_id, product_type, rule_type,
+                    delay_months, delay_business_days, rate_pct, description, is_active
+             FROM commission_rules
+             WHERE insurance_company_id = ? AND is_active = 1`;
+  const params: unknown[] = [insuranceCompanyId];
+
+  if (productType) {
+    sql += ' AND product_type = ?';
+    params.push(productType);
+  }
+
+  sql += ' ORDER BY product_type, rule_type';
+
+  const [rows] = await pool.query<RowDataPacket[]>(sql, params);
+  return rows.map((r) => ({
+    id: r.id,
+    insuranceCompanyId: r.insurance_company_id,
+    productType: r.product_type,
+    ruleType: r.rule_type,
+    delayMonths: r.delay_months,
+    delayBusinessDays: r.delay_business_days,
+    ratePct: r.rate_pct != null ? Number(r.rate_pct) : null,
+    description: r.description,
+    isActive: Boolean(r.is_active),
+  }));
+}
