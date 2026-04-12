@@ -9,7 +9,7 @@ export default function AppLayout() {
   return (
     <div className="min-h-screen bg-surface">
       <Sidebar mobileOpen={mobileMenuOpen} onClose={() => setMobileMenuOpen(false)} />
-      <main className="lg:me-72 min-h-screen">
+      <main className="lg:mr-72 min-h-screen">
         <TopBar title="לוח פיננסי" onMenuToggle={() => setMobileMenuOpen((v) => !v)} />
         <Outlet />
       </main>

@@ -12,26 +12,46 @@ authRouter.post(
   validate({ body: registerBodySchema }),
   async (req, res, next) => {
     try {
+      const registrationMode = process.env.REGISTRATION_MODE || 'open';
+
+      if (registrationMode === 'stripe_only') {
+        const adminKey = req.headers['x-admin-key'] as string | undefined;
+        const isAdminOverride = adminKey && adminKey === process.env.ADMIN_REGISTRATION_KEY;
+
+        if (!isAdminOverride) {
+          res.status(403).json({
+            data: null,
+            error: 'הרשמה ישירה אינה פעילה. יש להירשם דרך עמוד התשלום.',
+            meta: null,
+          });
+          return;
+        }
+      }
+
       const body = req.body as RegisterBody;
 
-      const exists = await findAgentDuplicate(body.agentId, body.email, body.licenseNumber);
+      const agentId = body.agentId || `AG${Date.now().toString(36).toUpperCase()}`;
+      const licenseNumber = body.licenseNumber || agentId;
+      const taxId = body.taxId || agentId;
+
+      const exists = await findAgentDuplicate(agentId, body.email, licenseNumber);
       if (exists) {
-        res.status(409).json({ data: null, error: 'Agent with this agentId, email, or licenseNumber already exists', meta: null });
+        res.status(409).json({ data: null, error: 'סוכן עם אימייל או מזהה זה כבר קיים במערכת', meta: null });
         return;
       }
 
       const id = uuid();
       const passwordHash = await hashPassword(body.password);
       const agent = await createAgentWithPassword(id, {
-        agentId: body.agentId,
-        agencyId: body.agencyId,
+        agentId,
+        agencyId: body.agencyId ?? 'AG-NEW',
         name: body.name,
         email: body.email,
         phone: body.phone ?? '',
-        licenseNumber: body.licenseNumber,
-        taxId: body.taxId,
-        taxStatus: body.taxStatus,
-        niiRate: body.niiRate,
+        licenseNumber,
+        taxId,
+        taxStatus: body.taxStatus ?? 'self_employed',
+        niiRate: body.niiRate ?? 17.83,
         passwordHash,
       });
 
@@ -69,8 +89,25 @@ authRouter.post(
 
       const token = signToken({ agentId: agent.id, sub: agent.id });
 
+      // Check if user has sales data in DB — skip onboarding if they do
+      const { getSalesTransactions } = await import('../repositories/sales.repository.js');
+      const sales = await getSalesTransactions(agent.id);
+      const hasSalesData = sales.length > 0;
+
       res.json({
-        data: { agent: { id: agent.id, email: agent.email, name: agent.name }, token },
+        data: {
+          agent: {
+            id: agent.id,
+            email: agent.email,
+            name: agent.name,
+            phone: (agent as Record<string, unknown>).phone || '',
+            licenseNumber: (agent as Record<string, unknown>).licenseNumber || '',
+            taxStatus: (agent as Record<string, unknown>).taxStatus || 'self_employed',
+            agreementUploaded: (agent as Record<string, unknown>).agreementUploaded === 1 || hasSalesData,
+            hasSalesData,
+          },
+          token,
+        },
         error: null,
         meta: null,
       });

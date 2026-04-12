@@ -1,0 +1,2721 @@
+<!DOCTYPE html>
+<html lang="he" dir="rtl">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Agora — ניהול עמלות חכם לסוכני ביטוח</title>
+  <meta name="description" content="חישוב שכר אוטומטי, מעקב לקוחות, וניתוח תיק — הכל במקום אחד. 179₪ לחודש." />
+  <meta name="theme-color" content="#000666" />
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Assistant:wght@300;400;600;700;800&family=Inter:wght@400;500;600;700&family=Work+Sans:wght@500;600;700;800;900&display=swap" rel="stylesheet" />
+  <style>
+    /* ============================================
+       RESET & VARIABLES
+    ============================================ */
+    *, *::before, *::after { margin: 0; padding: 0; box-sizing: border-box; }
+
+    :root {
+      --navy: #000666;
+      --navy-deep: #000444;
+      --navy-light: #0a1280;
+      --navy-glow: #1a2bff;
+      --emerald: #1B6D24;
+      --emerald-light: #28a745;
+      --emerald-glow: #34d058;
+      --emerald-bg: rgba(27, 109, 36, 0.08);
+      --cream: #faf9f7;
+      --warm-white: #FEFDFB;
+      --surface: #f4f3f0;
+      --surface-elevated: #ffffff;
+      --text-primary: #0f0f1a;
+      --text-secondary: #4a4a5a;
+      --text-tertiary: #8a8a9a;
+      --text-on-dark: #e8e8f0;
+      --text-on-dark-muted: rgba(232, 232, 240, 0.6);
+      --border-light: rgba(0, 6, 102, 0.06);
+      --border-medium: rgba(0, 6, 102, 0.1);
+      --radius-sm: 8px;
+      --radius-md: 12px;
+      --radius-lg: 20px;
+      --radius-xl: 28px;
+      --radius-pill: 100px;
+      --shadow-xs: 0 1px 2px rgba(0, 0, 0, 0.04);
+      --shadow-sm: 0 2px 8px rgba(0, 6, 102, 0.06);
+      --shadow-md: 0 8px 30px rgba(0, 6, 102, 0.08);
+      --shadow-lg: 0 20px 60px rgba(0, 6, 102, 0.1);
+      --shadow-xl: 0 30px 80px rgba(0, 6, 102, 0.14);
+      --shadow-emerald: 0 8px 40px rgba(27, 109, 36, 0.3);
+      --shadow-navy: 0 8px 40px rgba(0, 6, 102, 0.3);
+      --glass-bg: rgba(255, 255, 255, 0.7);
+      --glass-border: rgba(255, 255, 255, 0.3);
+      --glass-dark-bg: rgba(0, 6, 102, 0.4);
+      --glass-dark-border: rgba(255, 255, 255, 0.08);
+      --ease-out-expo: cubic-bezier(0.16, 1, 0.3, 1);
+      --ease-out-quart: cubic-bezier(0.25, 1, 0.5, 1);
+      --transition-fast: 0.2s var(--ease-out-quart);
+      --transition-base: 0.35s var(--ease-out-expo);
+      --transition-slow: 0.6s var(--ease-out-expo);
+    }
+
+    html {
+      scroll-behavior: smooth;
+      scroll-padding-top: 80px;
+    }
+
+    body {
+      font-family: 'Inter', 'Assistant', -apple-system, sans-serif;
+      color: var(--text-primary);
+      background: var(--warm-white);
+      line-height: 1.7;
+      -webkit-font-smoothing: antialiased;
+      -moz-osx-font-smoothing: grayscale;
+      overflow-x: hidden;
+    }
+
+    h1, h2, h3, h4, h5 {
+      font-family: 'Work Sans', 'Assistant', sans-serif;
+      line-height: 1.15;
+      letter-spacing: -0.02em;
+    }
+
+    img { max-width: 100%; display: block; }
+    a { text-decoration: none; color: inherit; }
+    button { font-family: inherit; }
+
+    .container {
+      max-width: 1200px;
+      margin: 0 auto;
+      padding: 0 32px;
+    }
+
+    .container-narrow {
+      max-width: 900px;
+      margin: 0 auto;
+      padding: 0 32px;
+    }
+
+    /* ============================================
+       NAVIGATION
+    ============================================ */
+    .nav {
+      position: fixed;
+      top: 0;
+      right: 0;
+      left: 0;
+      z-index: 1000;
+      padding: 20px 0;
+      transition: all var(--transition-base);
+    }
+
+    .nav.scrolled {
+      padding: 12px 0;
+      background: rgba(0, 4, 50, 0.85);
+      backdrop-filter: blur(20px) saturate(1.8);
+      -webkit-backdrop-filter: blur(20px) saturate(1.8);
+      border-bottom: 1px solid rgba(255, 255, 255, 0.06);
+    }
+
+    .nav-inner {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      direction: rtl;
+    }
+
+    .nav-logo {
+      font-family: 'Work Sans', sans-serif;
+      font-size: 1.6rem;
+      font-weight: 900;
+      color: #fff;
+      letter-spacing: -1px;
+      text-decoration: none;
+      display: flex;
+      align-items: center;
+      gap: 3px;
+      direction: ltr;
+      unicode-bidi: bidi-override;
+    }
+
+    .nav-logo .logo-accent {
+      background: linear-gradient(135deg, var(--emerald-light), var(--emerald-glow));
+      -webkit-background-clip: text;
+      -webkit-text-fill-color: transparent;
+      background-clip: text;
+    }
+
+    .nav-links {
+      display: flex;
+      align-items: center;
+      gap: 36px;
+      list-style: none;
+    }
+
+    .nav-links a {
+      color: rgba(255, 255, 255, 0.7);
+      font-size: 0.9rem;
+      font-weight: 500;
+      transition: color var(--transition-fast);
+      position: relative;
+    }
+
+    .nav-links a::after {
+      content: '';
+      position: absolute;
+      bottom: -4px;
+      right: 0;
+      width: 0;
+      height: 2px;
+      background: var(--emerald-light);
+      transition: width var(--transition-base);
+      border-radius: 1px;
+    }
+
+    .nav-links a:hover {
+      color: #fff;
+    }
+
+    .nav-links a:hover::after {
+      width: 100%;
+    }
+
+    .nav-cta {
+      display: inline-flex;
+      align-items: center;
+      gap: 8px;
+      padding: 10px 26px;
+      background: transparent;
+      color: var(--emerald);
+      border: 2px solid #fff;
+      border-radius: var(--radius-pill);
+      font-size: 0.88rem;
+      font-weight: 600;
+      cursor: pointer;
+      transition: all var(--transition-fast);
+      text-decoration: none;
+      white-space: nowrap;
+    }
+
+    .nav-cta:hover {
+      background: #fff;
+      color: var(--navy-dark);
+      transform: translateY(-1px);
+      box-shadow: 0 6px 20px rgba(27, 109, 36, 0.2);
+    }
+
+    .nav-mobile-btn {
+      display: none;
+      background: none;
+      border: none;
+      color: #fff;
+      cursor: pointer;
+      padding: 8px;
+    }
+
+    /* ============================================
+       HERO SECTION
+    ============================================ */
+    .hero {
+      position: relative;
+      min-height: 100vh;
+      display: flex;
+      align-items: center;
+      background: var(--navy-deep);
+      overflow: hidden;
+      padding: 140px 0 100px;
+    }
+
+    /* Animated gradient mesh background */
+    .hero-gradient {
+      position: absolute;
+      inset: 0;
+      z-index: 0;
+    }
+
+    .hero-gradient .orb {
+      position: absolute;
+      border-radius: 50%;
+      filter: blur(80px);
+      animation: orbFloat 20s ease-in-out infinite;
+      will-change: transform;
+    }
+
+    .hero-gradient .orb-1 {
+      width: 600px;
+      height: 600px;
+      background: radial-gradient(circle, rgba(26, 43, 255, 0.3) 0%, transparent 70%);
+      top: -15%;
+      right: -10%;
+      animation-delay: 0s;
+    }
+
+    .hero-gradient .orb-2 {
+      width: 500px;
+      height: 500px;
+      background: radial-gradient(circle, rgba(27, 109, 36, 0.25) 0%, transparent 70%);
+      bottom: -20%;
+      left: -5%;
+      animation-delay: -7s;
+      animation-duration: 25s;
+    }
+
+    .hero-gradient .orb-3 {
+      width: 400px;
+      height: 400px;
+      background: radial-gradient(circle, rgba(100, 80, 255, 0.15) 0%, transparent 70%);
+      top: 40%;
+      left: 30%;
+      animation-delay: -14s;
+      animation-duration: 30s;
+    }
+
+    @keyframes orbFloat {
+      0%, 100% { transform: translate(0, 0) scale(1); }
+      25% { transform: translate(40px, -30px) scale(1.05); }
+      50% { transform: translate(-20px, 20px) scale(0.95); }
+      75% { transform: translate(30px, 40px) scale(1.02); }
+    }
+
+    /* Dot grid overlay */
+    .hero-grid {
+      position: absolute;
+      inset: 0;
+      z-index: 1;
+      background-image: radial-gradient(rgba(255, 255, 255, 0.04) 1px, transparent 1px);
+      background-size: 40px 40px;
+    }
+
+    /* Radial fade at bottom */
+    .hero-fade {
+      position: absolute;
+      bottom: 0;
+      left: 0;
+      right: 0;
+      height: 200px;
+      background: linear-gradient(to top, var(--warm-white) 0%, transparent 100%);
+      z-index: 2;
+    }
+
+    .hero-content {
+      position: relative;
+      z-index: 10;
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 80px;
+      align-items: center;
+    }
+
+    .hero-text {
+      max-width: 560px;
+    }
+
+    .hero-badge {
+      display: inline-flex;
+      align-items: center;
+      gap: 8px;
+      padding: 6px 16px 6px 8px;
+      background: rgba(255, 255, 255, 0.06);
+      border: 1px solid rgba(255, 255, 255, 0.1);
+      border-radius: var(--radius-pill);
+      color: var(--emerald-glow);
+      font-size: 0.82rem;
+      font-weight: 600;
+      margin-bottom: 28px;
+      backdrop-filter: blur(10px);
+    }
+
+    .hero-badge-dot {
+      width: 8px;
+      height: 8px;
+      border-radius: 50%;
+      background: var(--emerald-glow);
+      animation: pulse 2s ease-in-out infinite;
+    }
+
+    @keyframes pulse {
+      0%, 100% { opacity: 1; transform: scale(1); }
+      50% { opacity: 0.5; transform: scale(0.8); }
+    }
+
+    .hero h1 {
+      font-size: clamp(2.8rem, 5.5vw, 4rem);
+      font-weight: 900;
+      color: #fff;
+      margin-bottom: 24px;
+      letter-spacing: -0.03em;
+      line-height: 1.08;
+    }
+
+    .hero h1 .text-gradient {
+      background: linear-gradient(135deg, var(--emerald-glow) 0%, #7dd3a8 50%, var(--emerald-light) 100%);
+      -webkit-background-clip: text;
+      -webkit-text-fill-color: transparent;
+      background-clip: text;
+    }
+
+    .hero-subtitle {
+      font-size: 1.15rem;
+      color: var(--text-on-dark-muted);
+      line-height: 1.75;
+      margin-bottom: 40px;
+      max-width: 480px;
+    }
+
+    /* Hero/CTA buttons — white border on dark backgrounds */
+    .hero .btn-primary,
+    .final-cta .btn-primary {
+      color: #fff;
+      border-color: rgba(255,255,255,0.5);
+    }
+    .hero .btn-primary:hover,
+    .final-cta .btn-primary:hover {
+      border-color: var(--emerald);
+      color: #fff;
+    }
+    .hero .btn-primary::before,
+    .final-cta .btn-primary::before {
+      background: var(--emerald);
+    }
+
+    .hero-actions {
+      display: flex;
+      align-items: center;
+      gap: 16px;
+      flex-wrap: wrap;
+    }
+
+    .btn-primary {
+      display: inline-flex;
+      align-items: center;
+      gap: 10px;
+      padding: 16px 36px;
+      background: transparent;
+      color: var(--emerald);
+      border: 2px solid var(--emerald);
+      border-radius: var(--radius-pill);
+      font-size: 1.05rem;
+      font-weight: 700;
+      cursor: pointer;
+      transition: all var(--transition-fast);
+      box-shadow: none;
+      text-decoration: none;
+      position: relative;
+      overflow: hidden;
+    }
+
+    .btn-primary::before {
+      content: '';
+      position: absolute;
+      inset: 0;
+      background: var(--emerald);
+      transform: scaleX(0);
+      transform-origin: right;
+      transition: transform 0.3s ease;
+      z-index: -1;
+    }
+
+    .btn-primary:hover::before {
+      transform: scaleX(1);
+      transform-origin: left;
+    }
+
+    .btn-primary:hover {
+      color: #fff;
+      transform: translateY(-2px);
+      box-shadow: 0 8px 30px rgba(27, 109, 36, 0.25);
+    }
+
+    .btn-primary:active {
+      transform: translateY(0);
+    }
+
+    .btn-secondary {
+      display: inline-flex;
+      align-items: center;
+      gap: 8px;
+      padding: 16px 32px;
+      background: rgba(255, 255, 255, 0.06);
+      color: rgba(255, 255, 255, 0.85);
+      border: 1px solid rgba(255, 255, 255, 0.12);
+      border-radius: var(--radius-pill);
+      font-size: 1rem;
+      font-weight: 600;
+      cursor: pointer;
+      transition: all var(--transition-fast);
+      text-decoration: none;
+      backdrop-filter: blur(10px);
+    }
+
+    .btn-secondary:hover {
+      background: rgba(255, 255, 255, 0.12);
+      border-color: rgba(255, 255, 255, 0.2);
+      color: #fff;
+    }
+
+    .hero-trust {
+      display: flex;
+      align-items: center;
+      gap: 24px;
+      margin-top: 48px;
+      flex-wrap: wrap;
+    }
+
+    .hero-trust-item {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      color: var(--text-on-dark-muted);
+      font-size: 0.82rem;
+      font-weight: 500;
+    }
+
+    .hero-trust-item svg {
+      width: 16px;
+      height: 16px;
+      color: var(--emerald-glow);
+      flex-shrink: 0;
+    }
+
+    /* Hero Visual — Mockup Card */
+    .hero-visual {
+      position: relative;
+    }
+
+    .hero-mockup {
+      background: rgba(255, 255, 255, 0.04);
+      border: 1px solid rgba(255, 255, 255, 0.08);
+      border-radius: var(--radius-xl);
+      padding: 32px;
+      backdrop-filter: blur(20px);
+      position: relative;
+    }
+
+    .mockup-header {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      margin-bottom: 24px;
+      padding-bottom: 16px;
+      border-bottom: 1px solid rgba(255, 255, 255, 0.06);
+    }
+
+    .mockup-title {
+      color: rgba(255, 255, 255, 0.9);
+      font-weight: 700;
+      font-size: 1rem;
+    }
+
+    .mockup-badge {
+      padding: 4px 12px;
+      background: rgba(52, 208, 88, 0.15);
+      color: var(--emerald-glow);
+      border-radius: var(--radius-pill);
+      font-size: 0.75rem;
+      font-weight: 600;
+    }
+
+    .mockup-stats {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 16px;
+      margin-bottom: 24px;
+    }
+
+    .mockup-stat {
+      background: rgba(255, 255, 255, 0.04);
+      border: 1px solid rgba(255, 255, 255, 0.06);
+      border-radius: var(--radius-md);
+      padding: 16px;
+    }
+
+    .mockup-stat-label {
+      color: rgba(255, 255, 255, 0.4);
+      font-size: 0.72rem;
+      font-weight: 500;
+      text-transform: uppercase;
+      letter-spacing: 0.05em;
+      margin-bottom: 6px;
+    }
+
+    .mockup-stat-value {
+      color: #fff;
+      font-family: 'Work Sans', sans-serif;
+      font-size: 1.5rem;
+      font-weight: 800;
+      letter-spacing: -0.02em;
+    }
+
+    .mockup-stat-value.green { color: var(--emerald-glow); }
+
+    .mockup-chart {
+      background: rgba(255, 255, 255, 0.03);
+      border-radius: var(--radius-md);
+      padding: 20px;
+      display: flex;
+      align-items: flex-end;
+      gap: 8px;
+      height: 120px;
+    }
+
+    .chart-bar {
+      flex: 1;
+      border-radius: 4px 4px 0 0;
+      transition: height 1s var(--ease-out-expo);
+      position: relative;
+    }
+
+    .chart-bar.navy { background: linear-gradient(to top, rgba(26, 43, 255, 0.4), rgba(26, 43, 255, 0.8)); }
+    .chart-bar.emerald { background: linear-gradient(to top, rgba(27, 109, 36, 0.4), rgba(52, 208, 88, 0.8)); }
+
+    /* Floating notification card */
+    .hero-float-card {
+      position: absolute;
+      bottom: -20px;
+      right: -20px;
+      background: rgba(255, 255, 255, 0.95);
+      border-radius: var(--radius-lg);
+      padding: 16px 20px;
+      box-shadow: var(--shadow-xl);
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      animation: floatBounce 6s ease-in-out infinite;
+      z-index: 5;
+    }
+
+    .float-card-icon {
+      width: 40px;
+      height: 40px;
+      border-radius: 10px;
+      background: var(--emerald-bg);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 1.2rem;
+      flex-shrink: 0;
+    }
+
+    .float-card-text {
+      font-size: 0.8rem;
+      font-weight: 600;
+      color: var(--text-primary);
+    }
+
+    .float-card-sub {
+      font-size: 0.72rem;
+      color: var(--emerald);
+      font-weight: 600;
+      margin-top: 2px;
+    }
+
+    @keyframes floatBounce {
+      0%, 100% { transform: translateY(0); }
+      50% { transform: translateY(-10px); }
+    }
+
+    /* ============================================
+       SOCIAL PROOF STRIP
+    ============================================ */
+    .social-proof {
+      padding: 80px 0;
+      background: var(--warm-white);
+      position: relative;
+    }
+
+    .social-proof-grid {
+      display: grid;
+      grid-template-columns: repeat(3, 1fr);
+      gap: 40px;
+      text-align: center;
+    }
+
+    .proof-item {
+      padding: 32px;
+    }
+
+    .proof-number {
+      font-family: 'Work Sans', sans-serif;
+      font-size: clamp(2.5rem, 4vw, 3.5rem);
+      font-weight: 900;
+      color: var(--navy);
+      letter-spacing: -0.03em;
+      line-height: 1;
+      margin-bottom: 8px;
+    }
+
+    .proof-number .accent {
+      color: var(--emerald);
+    }
+
+    .proof-label {
+      color: var(--text-secondary);
+      font-size: 1rem;
+      font-weight: 500;
+    }
+
+    .proof-divider {
+      width: 40px;
+      height: 3px;
+      background: var(--border-medium);
+      border-radius: 2px;
+      margin: 16px auto 0;
+    }
+
+    /* ============================================
+       FEATURES SECTION
+    ============================================ */
+    .features {
+      padding: 120px 0;
+      background: var(--cream);
+      position: relative;
+    }
+
+    .section-label {
+      display: inline-flex;
+      align-items: center;
+      gap: 8px;
+      padding: 6px 16px;
+      background: rgba(0, 6, 102, 0.04);
+      border: 1px solid var(--border-light);
+      border-radius: var(--radius-pill);
+      color: var(--navy);
+      font-size: 0.8rem;
+      font-weight: 600;
+      letter-spacing: 0.03em;
+      margin-bottom: 20px;
+    }
+
+    .section-title {
+      font-size: clamp(2rem, 4vw, 3rem);
+      font-weight: 800;
+      color: var(--text-primary);
+      margin-bottom: 16px;
+      letter-spacing: -0.03em;
+    }
+
+    .section-subtitle {
+      font-size: 1.1rem;
+      color: var(--text-secondary);
+      max-width: 500px;
+      line-height: 1.7;
+    }
+
+    .section-header {
+      text-align: center;
+      margin-bottom: 80px;
+    }
+
+    .section-header .section-subtitle {
+      margin: 0 auto;
+    }
+
+    .feature-row {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 80px;
+      align-items: center;
+      margin-bottom: 120px;
+    }
+
+    .feature-row:last-child {
+      margin-bottom: 0;
+    }
+
+    .feature-row.reversed .feature-text {
+      order: 2;
+    }
+
+    .feature-row.reversed .feature-visual {
+      order: 1;
+    }
+
+    .feature-number {
+      font-family: 'Work Sans', sans-serif;
+      font-size: 5rem;
+      font-weight: 900;
+      color: rgba(0, 6, 102, 0.04);
+      line-height: 1;
+      margin-bottom: -20px;
+      letter-spacing: -0.05em;
+    }
+
+    .feature-title {
+      font-size: 1.75rem;
+      font-weight: 800;
+      color: var(--text-primary);
+      margin-bottom: 16px;
+      letter-spacing: -0.02em;
+    }
+
+    .feature-desc {
+      font-size: 1.05rem;
+      color: var(--text-secondary);
+      line-height: 1.8;
+      margin-bottom: 24px;
+    }
+
+    .feature-tags {
+      display: flex;
+      gap: 8px;
+      flex-wrap: wrap;
+    }
+
+    .feature-tag {
+      padding: 6px 14px;
+      background: var(--surface-elevated);
+      border: 1px solid var(--border-light);
+      border-radius: var(--radius-pill);
+      font-size: 0.8rem;
+      font-weight: 500;
+      color: var(--text-secondary);
+    }
+
+    .feature-visual {
+      position: relative;
+    }
+
+    .feature-card-visual {
+      background: var(--surface-elevated);
+      border: 1px solid var(--border-light);
+      border-radius: var(--radius-xl);
+      padding: 32px;
+      box-shadow: var(--shadow-lg);
+      position: relative;
+      overflow: hidden;
+    }
+
+    .feature-card-visual::before {
+      content: '';
+      position: absolute;
+      top: 0;
+      right: 0;
+      left: 0;
+      height: 4px;
+      background: linear-gradient(90deg, var(--navy), var(--emerald));
+    }
+
+    /* Feature card inner content variants */
+    .fv-salary {
+      display: flex;
+      flex-direction: column;
+      gap: 16px;
+    }
+
+    .fv-row {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 14px 16px;
+      background: var(--cream);
+      border-radius: var(--radius-md);
+      font-size: 0.9rem;
+    }
+
+    .fv-row-label {
+      color: var(--text-secondary);
+      font-weight: 500;
+    }
+
+    .fv-row-value {
+      font-family: 'Work Sans', sans-serif;
+      font-weight: 700;
+      color: var(--text-primary);
+    }
+
+    .fv-row-value.highlight {
+      color: var(--emerald);
+      font-size: 1.1rem;
+    }
+
+    .fv-total {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 18px 16px;
+      background: var(--navy);
+      border-radius: var(--radius-md);
+      color: #fff;
+    }
+
+    .fv-total-label {
+      font-weight: 600;
+      font-size: 0.95rem;
+    }
+
+    .fv-total-value {
+      font-family: 'Work Sans', sans-serif;
+      font-size: 1.4rem;
+      font-weight: 800;
+    }
+
+    /* Clients visual */
+    .fv-clients {
+      display: flex;
+      flex-direction: column;
+      gap: 12px;
+    }
+
+    .fv-client-row {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      padding: 12px 16px;
+      background: var(--cream);
+      border-radius: var(--radius-md);
+    }
+
+    .fv-avatar {
+      width: 36px;
+      height: 36px;
+      border-radius: 50%;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 0.85rem;
+      font-weight: 700;
+      color: #fff;
+      flex-shrink: 0;
+    }
+
+    .fv-avatar.a1 { background: var(--navy); }
+    .fv-avatar.a2 { background: var(--emerald); }
+    .fv-avatar.a3 { background: #6c5ce7; }
+    .fv-avatar.a4 { background: #e17055; }
+
+    .fv-client-info {
+      flex: 1;
+    }
+
+    .fv-client-name {
+      font-weight: 600;
+      font-size: 0.88rem;
+      color: var(--text-primary);
+    }
+
+    .fv-client-id {
+      font-size: 0.75rem;
+      color: var(--text-tertiary);
+    }
+
+    .fv-client-amount {
+      font-family: 'Work Sans', sans-serif;
+      font-weight: 700;
+      font-size: 0.9rem;
+      color: var(--text-primary);
+    }
+
+    /* Analytics visual */
+    .fv-analytics {
+      display: flex;
+      flex-direction: column;
+      gap: 16px;
+    }
+
+    .fv-metric {
+      display: flex;
+      align-items: center;
+      gap: 16px;
+    }
+
+    .fv-metric-bar-bg {
+      flex: 1;
+      height: 10px;
+      background: var(--cream);
+      border-radius: 5px;
+      overflow: hidden;
+    }
+
+    .fv-metric-bar {
+      height: 100%;
+      border-radius: 5px;
+      transition: width 1.5s var(--ease-out-expo);
+    }
+
+    .fv-metric-bar.navy { background: var(--navy); }
+    .fv-metric-bar.emerald { background: var(--emerald); }
+    .fv-metric-bar.purple { background: #6c5ce7; }
+
+    .fv-metric-label {
+      font-size: 0.82rem;
+      color: var(--text-secondary);
+      font-weight: 500;
+      width: 80px;
+      text-align: left;
+      flex-shrink: 0;
+    }
+
+    .fv-metric-value {
+      font-family: 'Work Sans', sans-serif;
+      font-weight: 700;
+      font-size: 0.88rem;
+      color: var(--text-primary);
+      width: 50px;
+      flex-shrink: 0;
+    }
+
+    /* Alerts visual */
+    .fv-alerts {
+      display: flex;
+      flex-direction: column;
+      gap: 12px;
+    }
+
+    .fv-alert {
+      display: flex;
+      align-items: flex-start;
+      gap: 12px;
+      padding: 14px 16px;
+      border-radius: var(--radius-md);
+      font-size: 0.88rem;
+    }
+
+    .fv-alert.warning {
+      background: #fff8e1;
+      border-right: 3px solid #ffc107;
+    }
+
+    .fv-alert.success {
+      background: #e8f5e9;
+      border-right: 3px solid var(--emerald);
+    }
+
+    .fv-alert.info {
+      background: #e3f2fd;
+      border-right: 3px solid var(--navy-glow);
+    }
+
+    .fv-alert-icon {
+      font-size: 1.1rem;
+      flex-shrink: 0;
+      line-height: 1;
+      margin-top: 2px;
+    }
+
+    .fv-alert-text {
+      color: var(--text-primary);
+      line-height: 1.5;
+    }
+
+    .fv-alert-time {
+      font-size: 0.75rem;
+      color: var(--text-tertiary);
+      margin-top: 4px;
+    }
+
+    /* ============================================
+       HOW IT WORKS
+    ============================================ */
+    .how-it-works {
+      padding: 120px 0;
+      background: var(--warm-white);
+      position: relative;
+    }
+
+    .steps-container {
+      display: grid;
+      grid-template-columns: repeat(3, 1fr);
+      gap: 32px;
+      position: relative;
+      margin-top: 20px;
+    }
+
+    /* Connecting line behind steps */
+    .steps-container::before {
+      content: '';
+      position: absolute;
+      top: 60px;
+      right: 16.66%;
+      left: 16.66%;
+      height: 2px;
+      background: linear-gradient(90deg, var(--navy), var(--emerald));
+      opacity: 0.15;
+      z-index: 0;
+    }
+
+    .step-card {
+      text-align: center;
+      position: relative;
+      z-index: 1;
+      padding: 40px 24px;
+      border-radius: var(--radius-xl);
+      transition: all var(--transition-base);
+    }
+
+    .step-card:hover {
+      background: var(--surface-elevated);
+      box-shadow: var(--shadow-md);
+    }
+
+    .step-number {
+      width: 72px;
+      height: 72px;
+      border-radius: 50%;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-family: 'Work Sans', sans-serif;
+      font-size: 1.6rem;
+      font-weight: 800;
+      margin: 0 auto 24px;
+      position: relative;
+      transition: all var(--transition-base);
+    }
+
+    .step-card:nth-child(1) .step-number {
+      background: linear-gradient(135deg, var(--navy), var(--navy-light));
+      color: #fff;
+    }
+
+    .step-card:nth-child(2) .step-number {
+      background: linear-gradient(135deg, #4a3db0, #6c5ce7);
+      color: #fff;
+    }
+
+    .step-card:nth-child(3) .step-number {
+      background: linear-gradient(135deg, var(--emerald), var(--emerald-light));
+      color: #fff;
+    }
+
+    .step-number::after {
+      content: '';
+      position: absolute;
+      inset: -4px;
+      border-radius: 50%;
+      border: 2px dashed rgba(0, 6, 102, 0.1);
+    }
+
+    .step-title {
+      font-size: 1.3rem;
+      font-weight: 700;
+      color: var(--text-primary);
+      margin-bottom: 12px;
+    }
+
+    .step-desc {
+      font-size: 0.95rem;
+      color: var(--text-secondary);
+      line-height: 1.7;
+      max-width: 300px;
+      margin: 0 auto;
+    }
+
+    /* ============================================
+       PRICING SECTION
+    ============================================ */
+    .pricing {
+      padding: 120px 0;
+      background: var(--cream);
+      position: relative;
+    }
+
+    .pricing-wrapper {
+      max-width: 520px;
+      margin: 0 auto;
+    }
+
+    .pricing-card {
+      background: var(--surface-elevated);
+      border-radius: var(--radius-xl);
+      overflow: hidden;
+      box-shadow: var(--shadow-xl);
+      position: relative;
+      border: 1px solid var(--border-light);
+    }
+
+    .pricing-card-header {
+      background: var(--navy-deep);
+      padding: 48px 40px 40px;
+      text-align: center;
+      position: relative;
+      overflow: hidden;
+    }
+
+    .pricing-card-header::before {
+      content: '';
+      position: absolute;
+      top: -50%;
+      left: -50%;
+      width: 200%;
+      height: 200%;
+      background: radial-gradient(circle at 30% 70%, rgba(26, 43, 255, 0.15) 0%, transparent 50%),
+                  radial-gradient(circle at 70% 30%, rgba(27, 109, 36, 0.1) 0%, transparent 50%);
+    }
+
+    .pricing-popular {
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      padding: 6px 16px;
+      background: rgba(52, 208, 88, 0.15);
+      border: 1px solid rgba(52, 208, 88, 0.2);
+      border-radius: var(--radius-pill);
+      color: var(--emerald-glow);
+      font-size: 0.8rem;
+      font-weight: 600;
+      margin-bottom: 20px;
+      position: relative;
+    }
+
+    .pricing-amount {
+      position: relative;
+      display: flex;
+      align-items: baseline;
+      justify-content: center;
+      gap: 4px;
+      margin-bottom: 8px;
+    }
+
+    .pricing-currency {
+      font-family: 'Work Sans', sans-serif;
+      font-size: 1.5rem;
+      font-weight: 700;
+      color: rgba(255, 255, 255, 0.6);
+    }
+
+    .pricing-value {
+      font-family: 'Work Sans', sans-serif;
+      font-size: 4.5rem;
+      font-weight: 900;
+      color: #fff;
+      letter-spacing: -0.04em;
+      line-height: 1;
+    }
+
+    .pricing-period {
+      font-size: 0.95rem;
+      color: rgba(255, 255, 255, 0.5);
+      position: relative;
+    }
+
+    .pricing-card-body {
+      padding: 40px;
+    }
+
+    .pricing-features {
+      list-style: none;
+      margin-bottom: 36px;
+    }
+
+    .pricing-features li {
+      display: flex;
+      align-items: center;
+      gap: 14px;
+      padding: 14px 0;
+      border-bottom: 1px solid var(--border-light);
+      font-size: 0.95rem;
+      color: var(--text-primary);
+      font-weight: 500;
+    }
+
+    .pricing-features li:last-child {
+      border-bottom: none;
+    }
+
+    .pricing-check {
+      width: 22px;
+      height: 22px;
+      border-radius: 50%;
+      background: var(--emerald);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      flex-shrink: 0;
+    }
+
+    .pricing-check svg {
+      width: 12px;
+      height: 12px;
+      color: #fff;
+    }
+
+    .pricing-cta {
+      display: flex;
+      width: 100%;
+      align-items: center;
+      justify-content: center;
+      gap: 10px;
+      padding: 18px 36px;
+      background: transparent;
+      color: var(--navy);
+      border: 2px solid var(--navy);
+      border-radius: var(--radius-pill);
+      font-size: 1.1rem;
+      font-weight: 700;
+      cursor: pointer;
+      transition: all var(--transition-fast);
+      box-shadow: none;
+      text-decoration: none;
+      position: relative;
+      overflow: hidden;
+    }
+
+    .pricing-cta::before {
+      content: '';
+      position: absolute;
+      inset: 0;
+      background: var(--navy);
+      transform: scaleX(0);
+      transform-origin: right;
+      transition: transform 0.3s ease;
+      z-index: -1;
+    }
+
+    .pricing-cta:hover::before {
+      transform: scaleX(1);
+      transform-origin: left;
+    }
+
+    .pricing-cta:hover {
+      color: #fff;
+      transform: translateY(-2px);
+      box-shadow: 0 8px 30px rgba(0, 6, 102, 0.2);
+    }
+
+    .pricing-guarantee {
+      text-align: center;
+      margin-top: 24px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      gap: 8px;
+      color: var(--text-tertiary);
+      font-size: 0.85rem;
+    }
+
+    .pricing-guarantee svg {
+      width: 16px;
+      height: 16px;
+      color: var(--emerald);
+    }
+
+    /* ============================================
+       TESTIMONIALS
+    ============================================ */
+    .testimonials {
+      padding: 120px 0;
+      background: var(--warm-white);
+    }
+
+    .testimonials-grid {
+      display: grid;
+      grid-template-columns: repeat(3, 1fr);
+      gap: 28px;
+    }
+
+    .testimonial-card {
+      background: var(--surface-elevated);
+      border: 1px solid var(--border-light);
+      border-radius: var(--radius-xl);
+      padding: 36px;
+      transition: all var(--transition-base);
+      position: relative;
+    }
+
+    .testimonial-card:hover {
+      transform: translateY(-4px);
+      box-shadow: var(--shadow-lg);
+    }
+
+    .testimonial-stars {
+      display: flex;
+      gap: 2px;
+      margin-bottom: 20px;
+    }
+
+    .testimonial-stars svg {
+      width: 18px;
+      height: 18px;
+      color: #f59e0b;
+      fill: #f59e0b;
+    }
+
+    .testimonial-text {
+      font-size: 1rem;
+      color: var(--text-secondary);
+      line-height: 1.8;
+      margin-bottom: 24px;
+      position: relative;
+    }
+
+    .testimonial-text::before {
+      content: '\201F';
+      font-size: 3rem;
+      color: var(--border-medium);
+      line-height: 0;
+      position: absolute;
+      top: -8px;
+      right: -4px;
+      font-family: Georgia, serif;
+    }
+
+    .testimonial-author {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+    }
+
+    .testimonial-avatar {
+      width: 44px;
+      height: 44px;
+      border-radius: 50%;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-weight: 700;
+      color: #fff;
+      font-size: 0.95rem;
+      flex-shrink: 0;
+    }
+
+    .testimonial-avatar.t1 { background: linear-gradient(135deg, var(--navy), var(--navy-light)); }
+    .testimonial-avatar.t2 { background: linear-gradient(135deg, var(--emerald), var(--emerald-light)); }
+    .testimonial-avatar.t3 { background: linear-gradient(135deg, #6c5ce7, #a29bfe); }
+
+    .testimonial-name {
+      font-weight: 700;
+      font-size: 0.92rem;
+      color: var(--text-primary);
+    }
+
+    .testimonial-role {
+      font-size: 0.8rem;
+      color: var(--text-tertiary);
+    }
+
+    /* ============================================
+       FAQ SECTION
+    ============================================ */
+    .faq {
+      padding: 120px 0;
+      background: var(--cream);
+    }
+
+    .faq-list {
+      max-width: 740px;
+      margin: 0 auto;
+    }
+
+    .faq-item {
+      border-bottom: 1px solid var(--border-medium);
+    }
+
+    .faq-item:first-child {
+      border-top: 1px solid var(--border-medium);
+    }
+
+    .faq-question {
+      width: 100%;
+      background: none;
+      border: none;
+      padding: 26px 0;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      cursor: pointer;
+      font-size: 1.08rem;
+      font-weight: 600;
+      color: var(--text-primary);
+      font-family: 'Inter', 'Assistant', sans-serif;
+      text-align: right;
+      gap: 16px;
+      transition: color var(--transition-fast);
+    }
+
+    .faq-question:hover {
+      color: var(--navy);
+    }
+
+    .faq-icon {
+      width: 32px;
+      height: 32px;
+      border-radius: 50%;
+      background: rgba(0, 6, 102, 0.04);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      flex-shrink: 0;
+      transition: all var(--transition-base);
+    }
+
+    .faq-icon svg {
+      width: 16px;
+      height: 16px;
+      color: var(--navy);
+      transition: transform var(--transition-base);
+    }
+
+    .faq-item.open .faq-icon {
+      background: var(--navy);
+    }
+
+    .faq-item.open .faq-icon svg {
+      color: #fff;
+      transform: rotate(180deg);
+    }
+
+    .faq-answer {
+      max-height: 0;
+      overflow: hidden;
+      transition: max-height 0.4s var(--ease-out-expo);
+    }
+
+    .faq-item.open .faq-answer {
+      max-height: 300px;
+    }
+
+    .faq-answer p {
+      padding: 0 0 26px;
+      color: var(--text-secondary);
+      font-size: 0.98rem;
+      line-height: 1.85;
+      padding-left: 48px;
+    }
+
+    /* ============================================
+       FINAL CTA
+    ============================================ */
+    .final-cta {
+      padding: 120px 0;
+      background: var(--navy-deep);
+      position: relative;
+      overflow: hidden;
+    }
+
+    .final-cta-bg {
+      position: absolute;
+      inset: 0;
+    }
+
+    .final-cta-bg .orb {
+      position: absolute;
+      border-radius: 50%;
+      filter: blur(100px);
+    }
+
+    .final-cta-bg .orb-1 {
+      width: 500px;
+      height: 500px;
+      background: radial-gradient(circle, rgba(26, 43, 255, 0.2) 0%, transparent 70%);
+      top: -30%;
+      left: 10%;
+    }
+
+    .final-cta-bg .orb-2 {
+      width: 400px;
+      height: 400px;
+      background: radial-gradient(circle, rgba(27, 109, 36, 0.15) 0%, transparent 70%);
+      bottom: -30%;
+      right: 10%;
+    }
+
+    .final-cta-content {
+      position: relative;
+      z-index: 1;
+      text-align: center;
+      max-width: 650px;
+      margin: 0 auto;
+    }
+
+    .final-cta h2 {
+      font-size: clamp(2rem, 4vw, 3rem);
+      font-weight: 900;
+      color: #fff;
+      margin-bottom: 20px;
+      letter-spacing: -0.03em;
+    }
+
+    .final-cta p {
+      font-size: 1.15rem;
+      color: var(--text-on-dark-muted);
+      margin-bottom: 40px;
+      line-height: 1.7;
+    }
+
+    .final-cta .btn-primary {
+      font-size: 1.15rem;
+      padding: 18px 44px;
+    }
+
+    /* ============================================
+       FOOTER
+    ============================================ */
+    .footer {
+      background: #000333;
+      color: rgba(255, 255, 255, 0.5);
+      padding: 60px 0 36px;
+    }
+
+    .footer-top {
+      display: grid;
+      grid-template-columns: 2fr 1fr 1fr 1fr;
+      gap: 48px;
+      margin-bottom: 48px;
+    }
+
+    .footer-brand p {
+      font-size: 0.88rem;
+      line-height: 1.7;
+      margin-top: 16px;
+      max-width: 300px;
+    }
+
+    .footer-logo {
+      font-family: 'Work Sans', sans-serif;
+      font-size: 1.5rem;
+      font-weight: 900;
+      color: #fff;
+      display: inline-flex;
+      align-items: center;
+      gap: 3px;
+      direction: ltr;
+      unicode-bidi: bidi-override;
+    }
+
+    .footer-logo .logo-accent {
+      background: linear-gradient(135deg, var(--emerald-light), var(--emerald-glow));
+      -webkit-background-clip: text;
+      -webkit-text-fill-color: transparent;
+      background-clip: text;
+    }
+
+    .footer-col h4 {
+      color: rgba(255, 255, 255, 0.85);
+      font-size: 0.88rem;
+      font-weight: 700;
+      margin-bottom: 20px;
+      letter-spacing: 0.02em;
+    }
+
+    .footer-col a {
+      display: block;
+      color: rgba(255, 255, 255, 0.45);
+      font-size: 0.88rem;
+      padding: 6px 0;
+      transition: color var(--transition-fast);
+    }
+
+    .footer-col a:hover {
+      color: rgba(255, 255, 255, 0.85);
+    }
+
+    .footer-social {
+      display: flex;
+      gap: 12px;
+      margin-top: 24px;
+    }
+
+    .footer-social a {
+      width: 36px;
+      height: 36px;
+      border-radius: 50%;
+      background: rgba(255, 255, 255, 0.06);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      transition: all var(--transition-fast);
+      padding: 0;
+    }
+
+    .footer-social a:hover {
+      background: rgba(255, 255, 255, 0.12);
+    }
+
+    .footer-social svg {
+      width: 16px;
+      height: 16px;
+      color: rgba(255, 255, 255, 0.6);
+    }
+
+    .footer-bottom {
+      padding-top: 28px;
+      border-top: 1px solid rgba(255, 255, 255, 0.06);
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      flex-wrap: wrap;
+      gap: 16px;
+      font-size: 0.82rem;
+    }
+
+    .footer-bottom-links {
+      display: flex;
+      gap: 24px;
+    }
+
+    .footer-bottom-links a {
+      color: rgba(255, 255, 255, 0.4);
+      transition: color var(--transition-fast);
+    }
+
+    .footer-bottom-links a:hover {
+      color: rgba(255, 255, 255, 0.7);
+    }
+
+    /* ============================================
+       SVG WAVE DIVIDERS
+    ============================================ */
+    .wave-divider {
+      display: block;
+      width: 100%;
+      line-height: 0;
+      margin-top: -1px;
+    }
+
+    .wave-divider svg {
+      width: 100%;
+      height: auto;
+      display: block;
+    }
+
+    .wave-divider.flip {
+      transform: scaleY(-1);
+      margin-top: 0;
+      margin-bottom: -1px;
+    }
+
+    /* ============================================
+       SCROLL ANIMATIONS
+    ============================================ */
+    .reveal {
+      opacity: 0;
+      transform: translateY(40px);
+      transition: opacity 0.7s var(--ease-out-expo), transform 0.7s var(--ease-out-expo);
+    }
+
+    .reveal.visible {
+      opacity: 1;
+      transform: translateY(0);
+    }
+
+    .reveal-delay-1 { transition-delay: 0.1s; }
+    .reveal-delay-2 { transition-delay: 0.2s; }
+    .reveal-delay-3 { transition-delay: 0.3s; }
+    .reveal-delay-4 { transition-delay: 0.4s; }
+
+    /* ============================================
+       RESPONSIVE
+    ============================================ */
+    @media (max-width: 1024px) {
+      .hero-content {
+        grid-template-columns: 1fr;
+        gap: 60px;
+        text-align: center;
+      }
+
+      .hero-text { max-width: 100%; margin: 0 auto; }
+      .hero-subtitle { margin: 0 auto 40px; }
+      .hero-actions { justify-content: center; }
+      .hero-trust { justify-content: center; }
+      .hero-visual { max-width: 480px; margin: 0 auto; }
+
+      .feature-row {
+        grid-template-columns: 1fr;
+        gap: 48px;
+      }
+
+      .feature-row.reversed .feature-text { order: 1; }
+      .feature-row.reversed .feature-visual { order: 2; }
+
+      .feature-text { text-align: center; }
+      .feature-tags { justify-content: center; }
+      .feature-number { text-align: center; }
+
+      .footer-top {
+        grid-template-columns: 1fr 1fr;
+      }
+    }
+
+    @media (max-width: 768px) {
+      .container, .container-narrow {
+        padding: 0 20px;
+      }
+
+      .nav-links { display: none; }
+      .nav-mobile-btn { display: block; }
+
+      .hero {
+        padding: 120px 0 80px;
+        min-height: auto;
+      }
+
+      .hero h1 {
+        font-size: clamp(2.2rem, 8vw, 3rem);
+      }
+
+      .hero-actions {
+        flex-direction: column;
+        width: 100%;
+      }
+
+      .btn-primary, .btn-secondary {
+        width: 100%;
+        justify-content: center;
+      }
+
+      .social-proof-grid {
+        grid-template-columns: 1fr;
+        gap: 24px;
+      }
+
+      .proof-item { padding: 20px; }
+
+      .features { padding: 80px 0; }
+      .feature-row { margin-bottom: 80px; }
+
+      .steps-container {
+        grid-template-columns: 1fr;
+        gap: 24px;
+      }
+
+      .steps-container::before { display: none; }
+
+      .testimonials-grid {
+        grid-template-columns: 1fr;
+      }
+
+      .pricing-card-header { padding: 36px 24px 32px; }
+      .pricing-card-body { padding: 32px 24px; }
+
+      .footer-top {
+        grid-template-columns: 1fr;
+        gap: 32px;
+      }
+
+      .footer-bottom {
+        flex-direction: column;
+        text-align: center;
+      }
+
+      .footer-bottom-links { justify-content: center; }
+
+      .faq-answer p { padding-left: 0; }
+
+      .hero-float-card { display: none; }
+
+      .section-title {
+        font-size: clamp(1.8rem, 6vw, 2.4rem);
+      }
+
+      .how-it-works, .testimonials, .faq, .final-cta, .pricing {
+        padding: 80px 0;
+      }
+    }
+
+    @media (max-width: 480px) {
+      .hero h1 { font-size: 2rem; }
+      .mockup-stats { grid-template-columns: 1fr; }
+    }
+
+    /* Mobile menu */
+    .mobile-menu {
+      position: fixed;
+      top: 0;
+      right: 0;
+      left: 0;
+      bottom: 0;
+      background: rgba(0, 4, 50, 0.97);
+      backdrop-filter: blur(20px);
+      z-index: 999;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      gap: 32px;
+      opacity: 0;
+      pointer-events: none;
+      transition: opacity var(--transition-base);
+    }
+
+    .mobile-menu.open {
+      opacity: 1;
+      pointer-events: all;
+    }
+
+    .mobile-menu a {
+      color: #fff;
+      font-size: 1.3rem;
+      font-weight: 600;
+    }
+
+    .mobile-menu-close {
+      position: absolute;
+      top: 24px;
+      left: 24px;
+      background: none;
+      border: none;
+      color: #fff;
+      font-size: 1.5rem;
+      cursor: pointer;
+      padding: 8px;
+    }
+  </style>
+</head>
+<body>
+
+  <!-- ========== NAVIGATION ========== -->
+  <nav class="nav" id="nav">
+    <div class="container">
+      <div class="nav-inner">
+        <a href="#" class="nav-logo" style="direction:ltr">Ago<span class="logo-accent">ra</span></a>
+
+        <ul class="nav-links">
+          <li><a href="#features">תכונות</a></li>
+          <li><a href="#how">איך זה עובד</a></li>
+          <li><a href="#pricing">מחיר</a></li>
+          <li><a href="#faq">שאלות</a></li>
+        </ul>
+
+        <a href="#checkout" class="nav-cta">
+          התחל עכשיו
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M19 12H5"/><path d="M12 19l-7-7 7-7"/></svg>
+        </a>
+
+        <button class="nav-mobile-btn" id="mobileMenuBtn" aria-label="תפריט">
+          <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><line x1="3" y1="6" x2="21" y2="6"/><line x1="3" y1="12" x2="21" y2="12"/><line x1="3" y1="18" x2="21" y2="18"/></svg>
+        </button>
+      </div>
+    </div>
+  </nav>
+
+  <!-- Mobile Menu -->
+  <div class="mobile-menu" id="mobileMenu">
+    <button class="mobile-menu-close" id="mobileMenuClose" aria-label="סגור">
+      <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+    </button>
+    <a href="#features" class="mobile-link">תכונות</a>
+    <a href="#how" class="mobile-link">איך זה עובד</a>
+    <a href="#pricing" class="mobile-link">מחיר</a>
+    <a href="#faq" class="mobile-link">שאלות</a>
+    <a href="#checkout" class="mobile-link btn-primary" style="margin-top: 16px;">התחל עכשיו</a>
+  </div>
+
+  <!-- ========== HERO ========== -->
+  <section class="hero" id="hero">
+    <div class="hero-gradient">
+      <div class="orb orb-1"></div>
+      <div class="orb orb-2"></div>
+      <div class="orb orb-3"></div>
+    </div>
+    <div class="hero-grid"></div>
+    <div class="hero-fade"></div>
+
+    <div class="container">
+      <div class="hero-content">
+        <div class="hero-text">
+          <div class="hero-badge reveal">
+            <span class="hero-badge-dot"></span>
+            מערכת ניהול עמלות מהדור החדש
+          </div>
+          <h1 class="reveal reveal-delay-1">
+            תפסיק לספור עמלות.<br>
+            <span class="text-gradient">תתחיל להרוויח.</span>
+          </h1>
+          <p class="hero-subtitle reveal reveal-delay-2">
+            Agora מחשבת את השכר שלך אוטומטית, עוקבת אחרי כל לקוח ופוליסה, ונותנת לך תמונה מלאה של התיק — כך שתוכל להתמקד במה שבאמת חשוב.
+          </p>
+          <div class="hero-actions reveal reveal-delay-3">
+            <a href="#checkout" class="btn-primary">
+              התחל עכשיו — 179&#8362;/חודש
+              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M19 12H5"/><path d="M12 19l-7-7 7-7"/></svg>
+            </a>
+            <a href="#how" class="btn-secondary">
+              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><polygon points="10 8 16 12 10 16 10 8"/></svg>
+              איך זה עובד?
+            </a>
+          </div>
+          <div class="hero-trust reveal reveal-delay-4">
+            <div class="hero-trust-item">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/></svg>
+              הצפנת 256-bit
+            </div>
+            <div class="hero-trust-item">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"/><polyline points="22 4 12 14.01 9 11.01"/></svg>
+              ללא התחייבות
+            </div>
+            <div class="hero-trust-item">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><path d="M12 6v6l4 2"/></svg>
+              הקמה תוך דקות
+            </div>
+          </div>
+        </div>
+
+        <!-- Hero Mockup -->
+        <div class="hero-visual reveal reveal-delay-2">
+          <div class="hero-mockup">
+            <div class="mockup-header">
+              <span class="mockup-title">סיכום עמלות — אפריל 2026</span>
+              <span class="mockup-badge">מעודכן</span>
+            </div>
+            <div class="mockup-stats">
+              <div class="mockup-stat">
+                <div class="mockup-stat-label">סה"כ עמלות</div>
+                <div class="mockup-stat-value">42,850&#8362;</div>
+              </div>
+              <div class="mockup-stat">
+                <div class="mockup-stat-label">שינוי מחודש קודם</div>
+                <div class="mockup-stat-value green">+12.3%</div>
+              </div>
+              <div class="mockup-stat">
+                <div class="mockup-stat-label">לקוחות פעילים</div>
+                <div class="mockup-stat-value">187</div>
+              </div>
+              <div class="mockup-stat">
+                <div class="mockup-stat-label">פוליסות</div>
+                <div class="mockup-stat-value">342</div>
+              </div>
+            </div>
+            <div class="mockup-chart" id="heroChart">
+              <div class="chart-bar navy" style="height: 45%"></div>
+              <div class="chart-bar emerald" style="height: 62%"></div>
+              <div class="chart-bar navy" style="height: 38%"></div>
+              <div class="chart-bar emerald" style="height: 78%"></div>
+              <div class="chart-bar navy" style="height: 55%"></div>
+              <div class="chart-bar emerald" style="height: 85%"></div>
+              <div class="chart-bar navy" style="height: 68%"></div>
+              <div class="chart-bar emerald" style="height: 92%"></div>
+            </div>
+          </div>
+
+          <div class="hero-float-card">
+            <div class="float-card-icon">&#9989;</div>
+            <div>
+              <div class="float-card-text">חישוב שכר הושלם</div>
+              <div class="float-card-sub">42,850&#8362; — 6 חברות ביטוח</div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ========== SOCIAL PROOF ========== -->
+  <section class="social-proof">
+    <div class="container">
+      <div class="social-proof-grid">
+        <div class="proof-item reveal">
+          <div class="proof-number">50<span class="accent">+</span></div>
+          <div class="proof-label">סוכני ביטוח פעילים</div>
+          <div class="proof-divider"></div>
+        </div>
+        <div class="proof-item reveal reveal-delay-1">
+          <div class="proof-number">10,000<span class="accent">+</span></div>
+          <div class="proof-label">פוליסות מנוטרות</div>
+          <div class="proof-divider"></div>
+        </div>
+        <div class="proof-item reveal reveal-delay-2">
+          <div class="proof-number">99.9<span class="accent">%</span></div>
+          <div class="proof-label">דיוק בחישוב עמלות</div>
+          <div class="proof-divider"></div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- Wave divider -->
+  <div class="wave-divider">
+    <svg viewBox="0 0 1440 80" fill="none" xmlns="http://www.w3.org/2000/svg" preserveAspectRatio="none">
+      <path d="M0 40C240 80 480 0 720 40C960 80 1200 0 1440 40V80H0V40Z" fill="#faf9f7"/>
+    </svg>
+  </div>
+
+  <!-- ========== FEATURES ========== -->
+  <section class="features" id="features">
+    <div class="container">
+      <div class="section-header reveal">
+        <div class="section-label">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"/></svg>
+          יכולות המערכת
+        </div>
+        <h2 class="section-title">כל מה שצריך כדי<br>לנהל עמלות כמו מקצוען</h2>
+        <p class="section-subtitle">ארבעה כלים חכמים שיחסכו לך שעות עבודה כל חודש ויתנו לך שקט נפשי מלא</p>
+      </div>
+
+      <!-- Feature 1: Salary Calc -->
+      <div class="feature-row reveal">
+        <div class="feature-text">
+          <div class="feature-number">01</div>
+          <h3 class="feature-title">חישוב שכר אוטומטי</h3>
+          <p class="feature-desc">
+            העלה את קבצי העמלות מחברות הביטוח — המערכת מזהה אוטומטית את המבנה, מחלצת את הנתונים, ומחשבת את השכר שלך תוך שניות. בלי אקסלים, בלי טעויות.
+          </p>
+          <div class="feature-tags">
+            <span class="feature-tag">זיהוי אוטומטי</span>
+            <span class="feature-tag">כל חברות הביטוח</span>
+            <span class="feature-tag">חישוב מיידי</span>
+          </div>
+        </div>
+        <div class="feature-visual">
+          <div class="feature-card-visual">
+            <div class="fv-salary">
+              <div class="fv-row">
+                <span class="fv-row-label">מגדל — ביטוח חיים</span>
+                <span class="fv-row-value">12,340&#8362;</span>
+              </div>
+              <div class="fv-row">
+                <span class="fv-row-label">הראל — פנסיה</span>
+                <span class="fv-row-value">8,920&#8362;</span>
+              </div>
+              <div class="fv-row">
+                <span class="fv-row-label">כלל — אלמנטרי</span>
+                <span class="fv-row-value">6,180&#8362;</span>
+              </div>
+              <div class="fv-row">
+                <span class="fv-row-label">הפניקס — בריאות</span>
+                <span class="fv-row-value">4,560&#8362;</span>
+              </div>
+              <div class="fv-total">
+                <span class="fv-total-label">סה"כ שכר נטו</span>
+                <span class="fv-total-value">32,000&#8362;</span>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Feature 2: Client Tracking -->
+      <div class="feature-row reversed reveal">
+        <div class="feature-text">
+          <div class="feature-number">02</div>
+          <h3 class="feature-title">מעקב לקוחות ופוליסות</h3>
+          <p class="feature-desc">
+            חיפוש מהיר לפי שם או ת.ז., תמונה מלאה של כל לקוח — כל הפוליסות, העמלות החודשיות, ומגמות לאורך זמן. תמיד תדע מה קורה עם כל לקוח.
+          </p>
+          <div class="feature-tags">
+            <span class="feature-tag">חיפוש מהיר</span>
+            <span class="feature-tag">היסטוריית עמלות</span>
+            <span class="feature-tag">מגמות</span>
+          </div>
+        </div>
+        <div class="feature-visual">
+          <div class="feature-card-visual">
+            <div class="fv-clients">
+              <div class="fv-client-row">
+                <div class="fv-avatar a1">דכ</div>
+                <div class="fv-client-info">
+                  <div class="fv-client-name">דוד כהן</div>
+                  <div class="fv-client-id">3 פוליסות פעילות</div>
+                </div>
+                <div class="fv-client-amount">1,240&#8362;</div>
+              </div>
+              <div class="fv-client-row">
+                <div class="fv-avatar a2">של</div>
+                <div class="fv-client-info">
+                  <div class="fv-client-name">שרה לוי</div>
+                  <div class="fv-client-id">5 פוליסות פעילות</div>
+                </div>
+                <div class="fv-client-amount">2,180&#8362;</div>
+              </div>
+              <div class="fv-client-row">
+                <div class="fv-avatar a3">מא</div>
+                <div class="fv-client-info">
+                  <div class="fv-client-name">משה אברהם</div>
+                  <div class="fv-client-id">2 פוליסות פעילות</div>
+                </div>
+                <div class="fv-client-amount">890&#8362;</div>
+              </div>
+              <div class="fv-client-row">
+                <div class="fv-avatar a4">רב</div>
+                <div class="fv-client-info">
+                  <div class="fv-client-name">רחל בן-דוד</div>
+                  <div class="fv-client-id">4 פוליסות פעילות</div>
+                </div>
+                <div class="fv-client-amount">1,650&#8362;</div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Feature 3: Portfolio Analytics -->
+      <div class="feature-row reveal">
+        <div class="feature-text">
+          <div class="feature-number">03</div>
+          <h3 class="feature-title">ניתוח תיק מתקדם</h3>
+          <p class="feature-desc">
+            ראה את הריכוזיות של התיק שלך, זהה לקוחות בסיכון, ותחזה הכנסות עתידיות. ניתוח מעמיק שעוזר לך לקבל החלטות חכמות יותר.
+          </p>
+          <div class="feature-tags">
+            <span class="feature-tag">ריכוזיות תיק</span>
+            <span class="feature-tag">לקוחות בסיכון</span>
+            <span class="feature-tag">תחזית הכנסה</span>
+          </div>
+        </div>
+        <div class="feature-visual">
+          <div class="feature-card-visual">
+            <div class="fv-analytics">
+              <div class="fv-metric">
+                <span class="fv-metric-value">42%</span>
+                <div class="fv-metric-bar-bg">
+                  <div class="fv-metric-bar navy" style="width: 42%"></div>
+                </div>
+                <span class="fv-metric-label">ביטוח חיים</span>
+              </div>
+              <div class="fv-metric">
+                <span class="fv-metric-value">28%</span>
+                <div class="fv-metric-bar-bg">
+                  <div class="fv-metric-bar emerald" style="width: 28%"></div>
+                </div>
+                <span class="fv-metric-label">פנסיה</span>
+              </div>
+              <div class="fv-metric">
+                <span class="fv-metric-value">18%</span>
+                <div class="fv-metric-bar-bg">
+                  <div class="fv-metric-bar purple" style="width: 18%"></div>
+                </div>
+                <span class="fv-metric-label">אלמנטרי</span>
+              </div>
+              <div class="fv-metric">
+                <span class="fv-metric-value">12%</span>
+                <div class="fv-metric-bar-bg">
+                  <div class="fv-metric-bar emerald" style="width: 12%"></div>
+                </div>
+                <span class="fv-metric-label">בריאות</span>
+              </div>
+              <div style="margin-top: 12px; padding: 16px; background: var(--cream); border-radius: var(--radius-md);">
+                <div style="display: flex; justify-content: space-between; align-items: center;">
+                  <span style="font-size: 0.85rem; color: var(--text-secondary);">תחזית הכנסה שנתית</span>
+                  <span style="font-family: 'Work Sans', sans-serif; font-weight: 800; font-size: 1.1rem; color: var(--emerald);">514,200&#8362;</span>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Feature 4: Smart Alerts -->
+      <div class="feature-row reversed reveal">
+        <div class="feature-text">
+          <div class="feature-number">04</div>
+          <h3 class="feature-title">התראות חכמות</h3>
+          <p class="feature-desc">
+            קבל התראה מיידית כשלקוח מבטל פוליסה, כשיש ירידה חריגה בעמלות, או כשיש הזדמנות שאתה עלול לפספס. תמיד צעד אחד קדימה.
+          </p>
+          <div class="feature-tags">
+            <span class="feature-tag">התראות בזמן אמת</span>
+            <span class="feature-tag">ירידות חריגות</span>
+            <span class="feature-tag">הזדמנויות</span>
+          </div>
+        </div>
+        <div class="feature-visual">
+          <div class="feature-card-visual">
+            <div class="fv-alerts">
+              <div class="fv-alert warning">
+                <span class="fv-alert-icon">&#9888;&#65039;</span>
+                <div>
+                  <div class="fv-alert-text">ירידה של 23% בעמלות מגדל — בדוק ביטולי פוליסות אחרונים</div>
+                  <div class="fv-alert-time">לפני שעתיים</div>
+                </div>
+              </div>
+              <div class="fv-alert success">
+                <span class="fv-alert-icon">&#127881;</span>
+                <div>
+                  <div class="fv-alert-text">עלייה של 15% בעמלות פנסיה — המגמה החיובית נמשכת כבר 3 חודשים</div>
+                  <div class="fv-alert-time">לפני 5 שעות</div>
+                </div>
+              </div>
+              <div class="fv-alert info">
+                <span class="fv-alert-icon">&#128161;</span>
+                <div>
+                  <div class="fv-alert-text">3 לקוחות ללא פוליסת בריאות — הזדמנות למכירה נוספת</div>
+                  <div class="fv-alert-time">היום</div>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- Wave divider -->
+  <div class="wave-divider flip" style="background: var(--cream);">
+    <svg viewBox="0 0 1440 60" fill="none" xmlns="http://www.w3.org/2000/svg" preserveAspectRatio="none">
+      <path d="M0 30C360 60 720 0 1080 30C1260 45 1380 15 1440 30V60H0V30Z" fill="#FEFDFB"/>
+    </svg>
+  </div>
+
+  <!-- ========== HOW IT WORKS ========== -->
+  <section class="how-it-works" id="how">
+    <div class="container">
+      <div class="section-header reveal">
+        <div class="section-label">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><path d="M12 16v-4"/><path d="M12 8h.01"/></svg>
+          תהליך פשוט
+        </div>
+        <h2 class="section-title">שלושה צעדים להתחלה</h2>
+        <p class="section-subtitle">מהרגע שנרשמת ועד שתראה את התמונה המלאה — פחות מ-5 דקות</p>
+      </div>
+
+      <div class="steps-container">
+        <div class="step-card reveal">
+          <div class="step-number">1</div>
+          <h3 class="step-title">נרשם ומשלם</h3>
+          <p class="step-desc">הרשמה מהירה ותשלום מאובטח דרך Stripe. בלי חוזים, בלי התחייבות — מבטל מתי שרוצה.</p>
+        </div>
+
+        <div class="step-card reveal reveal-delay-1">
+          <div class="step-number">2</div>
+          <h3 class="step-title">מעלה קבצי עמלות</h3>
+          <p class="step-desc">גורר קבצי אקסל מחברות הביטוח — המערכת מזהה אוטומטית את הפורמט ומחלצת את כל הנתונים.</p>
+        </div>
+
+        <div class="step-card reveal reveal-delay-2">
+          <div class="step-number">3</div>
+          <h3 class="step-title">מקבל תמונה מלאה</h3>
+          <p class="step-desc">דשבורד מלא עם חישובי שכר, ניתוחי תיק, מעקב לקוחות, והתראות — הכל במקום אחד.</p>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ========== PRICING ========== -->
+  <section class="pricing" id="pricing" aria-label="תמחור">
+    <div id="checkout"></div>
+    <div class="container">
+      <div class="section-header reveal">
+        <div class="section-label">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="12" y1="1" x2="12" y2="23"/><path d="M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6"/></svg>
+          תמחור
+        </div>
+        <h2 class="section-title">תמחור פשוט. בלי הפתעות.</h2>
+        <p class="section-subtitle">חבילה אחת שכוללת הכל. ללא התחייבות, אפשר לבטל בכל עת.</p>
+      </div>
+
+      <div class="pricing-wrapper reveal">
+        <div class="pricing-card">
+          <div class="pricing-card-header">
+            <div class="pricing-popular">
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"/></svg>
+              חבילה מקצועית
+            </div>
+            <div class="pricing-amount">
+              <span class="pricing-value">179</span>
+              <span class="pricing-currency">&#8362;</span>
+            </div>
+            <div class="pricing-period">לחודש, כולל מע"מ</div>
+          </div>
+          <div class="pricing-card-body">
+            <ul class="pricing-features">
+              <li>
+                <span class="pricing-check"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg></span>
+                חישוב שכר אוטומטי מכל חברות הביטוח
+              </li>
+              <li>
+                <span class="pricing-check"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg></span>
+                מעקב לקוחות ופוליסות מלא
+              </li>
+              <li>
+                <span class="pricing-check"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg></span>
+                ניתוח תיק וריכוזיות מתקדם
+              </li>
+              <li>
+                <span class="pricing-check"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg></span>
+                התראות חכמות על שינויים בתיק
+              </li>
+              <li>
+                <span class="pricing-check"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg></span>
+                היסטוריית עמלות מלאה
+              </li>
+              <li>
+                <span class="pricing-check"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg></span>
+                תמיכה טכנית מהירה
+              </li>
+            </ul>
+            <a href="#checkout" class="pricing-cta">
+              התחל עכשיו
+              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M19 12H5"/><path d="M12 19l-7-7 7-7"/></svg>
+            </a>
+            <div class="pricing-guarantee">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/></svg>
+              ביטול בלחיצת כפתור. ללא דמי ביטול.
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ========== TESTIMONIALS ========== -->
+  <section class="testimonials" id="testimonials">
+    <div class="container">
+      <div class="section-header reveal">
+        <div class="section-label">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg>
+          מה אומרים עלינו
+        </div>
+        <h2 class="section-title">סוכנים שכבר עברו לעבוד חכם</h2>
+      </div>
+
+      <div class="testimonials-grid">
+        <div class="testimonial-card reveal">
+          <div class="testimonial-stars">
+            <svg viewBox="0 0 24 24"><polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"/></svg>
+            <svg viewBox="0 0 24 24"><polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"/></svg>
+            <svg viewBox="0 0 24 24"><polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"/></svg>
+            <svg viewBox="0 0 24 24"><polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"/></svg>
+            <svg viewBox="0 0 24 24"><polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"/></svg>
+          </div>
+          <p class="testimonial-text">
+            לפני Agora הייתי מבזבז יומיים בחודש על אקסלים. עכשיו הכל מחושב אוטומטית ואני יכול להתמקד בלקוחות במקום במספרים. חיסכון אדיר בזמן.
+          </p>
+          <div class="testimonial-author">
+            <div class="testimonial-avatar t1">יכ</div>
+            <div>
+              <div class="testimonial-name">יוסי כהן</div>
+              <div class="testimonial-role">סוכן ביטוח, 15 שנות ניסיון</div>
+            </div>
+          </div>
+        </div>
+
+        <div class="testimonial-card reveal reveal-delay-1">
+          <div class="testimonial-stars">
+            <svg viewBox="0 0 24 24"><polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"/></svg>
+            <svg viewBox="0 0 24 24"><polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"/></svg>
+            <svg viewBox="0 0 24 24"><polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"/></svg>
+            <svg viewBox="0 0 24 24"><polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"/></svg>
+            <svg viewBox="0 0 24 24"><polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"/></svg>
+          </div>
+          <p class="testimonial-text">
+            ההתראות החכמות הצילו אותי כבר כמה פעמים. גיליתי ביטולי פוליסות שלא ידעתי עליהם והצלחתי לשמר לקוחות. המערכת משתלמת פי כמה מהמחיר שלה.
+          </p>
+          <div class="testimonial-author">
+            <div class="testimonial-avatar t2">מל</div>
+            <div>
+              <div class="testimonial-name">מיכל לוי</div>
+              <div class="testimonial-role">סוכנת ביטוח עצמאית, חיפה</div>
+            </div>
+          </div>
+        </div>
+
+        <div class="testimonial-card reveal reveal-delay-2">
+          <div class="testimonial-stars">
+            <svg viewBox="0 0 24 24"><polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"/></svg>
+            <svg viewBox="0 0 24 24"><polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"/></svg>
+            <svg viewBox="0 0 24 24"><polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"/></svg>
+            <svg viewBox="0 0 24 24"><polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"/></svg>
+            <svg viewBox="0 0 24 24"><polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"/></svg>
+          </div>
+          <p class="testimonial-text">
+            ניתוח התיק פתח לי את העיניים. לא הבנתי כמה מרוכז התיק שלי בחברה אחת עד ש-Agora הראתה לי את המספרים. עכשיו אני מגוון ומרוויח יותר.
+          </p>
+          <div class="testimonial-author">
+            <div class="testimonial-avatar t3">אש</div>
+            <div>
+              <div class="testimonial-name">אבי שמעון</div>
+              <div class="testimonial-role">סוכן ביטוח, סוכנות "שמעון ביטוח"</div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ========== FAQ ========== -->
+  <section class="faq" id="faq">
+    <div class="container">
+      <div class="section-header reveal">
+        <div class="section-label">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><path d="M9.09 9a3 3 0 0 1 5.83 1c0 2-3 3-3 3"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg>
+          שאלות נפוצות
+        </div>
+        <h2 class="section-title">יש שאלות? יש תשובות.</h2>
+      </div>
+
+      <div class="faq-list">
+        <div class="faq-item reveal">
+          <button class="faq-question" aria-expanded="false">
+            איך מעלים קבצי עמלות למערכת?
+            <span class="faq-icon">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="6 9 12 15 18 9"/></svg>
+            </span>
+          </button>
+          <div class="faq-answer">
+            <p>פשוט גוררים את קבצי האקסל שמתקבלים מחברות הביטוח לתוך המערכת. המערכת מזהה אוטומטית את מבנה הקובץ ומחלצת את כל הנתונים הרלוונטיים — שמות לקוחות, מספרי פוליסה, סכומי עמלות, וסוגי ביטוח.</p>
+          </div>
+        </div>
+
+        <div class="faq-item reveal">
+          <button class="faq-question" aria-expanded="false">
+            אילו חברות ביטוח נתמכות?
+            <span class="faq-icon">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="6 9 12 15 18 9"/></svg>
+            </span>
+          </button>
+          <div class="faq-answer">
+            <p>המערכת תומכת בכל חברות הביטוח הגדולות בישראל — מגדל, הראל, כלל, הפניקס, מנורה, איילון, ועוד. אנחנו מוסיפים תמיכה בחברות נוספות באופן שוטף. אם יש חברה שחסרה — תגיד לנו ונוסיף אותה.</p>
+          </div>
+        </div>
+
+        <div class="faq-item reveal">
+          <button class="faq-question" aria-expanded="false">
+            האם הנתונים שלי מאובטחים?
+            <span class="faq-icon">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="6 9 12 15 18 9"/></svg>
+            </span>
+          </button>
+          <div class="faq-answer">
+            <p>בהחלט. כל הנתונים מוצפנים ב-256-bit SSL ומאוחסנים בשרתים מאובטחים של AWS. הגישה מוגנת באימות דו-שלבי, ואנחנו לא משתפים נתונים עם שום גורם חיצוני. הפרטיות שלך היא העדיפות הראשונה שלנו.</p>
+          </div>
+        </div>
+
+        <div class="faq-item reveal">
+          <button class="faq-question" aria-expanded="false">
+            איך מבטלים את המנוי?
+            <span class="faq-icon">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="6 9 12 15 18 9"/></svg>
+            </span>
+          </button>
+          <div class="faq-answer">
+            <p>ביטול מנוי מתבצע בלחיצת כפתור אחת מתוך הגדרות החשבון. אין התחייבות, אין דמי ביטול, אין שאלות. המנוי נשאר פעיל עד סוף תקופת החיוב הנוכחית.</p>
+          </div>
+        </div>
+
+        <div class="faq-item reveal">
+          <button class="faq-question" aria-expanded="false">
+            כמה זמן לוקח להתחיל להשתמש?
+            <span class="faq-icon">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="6 9 12 15 18 9"/></svg>
+            </span>
+          </button>
+          <div class="faq-answer">
+            <p>פחות מ-5 דקות. נרשמים, משלמים, מעלים את הקבצים — וזהו. המערכת עושה את כל העבודה. אין צורך בהתקנות, אין צורך בהגדרות מורכבות.</p>
+          </div>
+        </div>
+
+        <div class="faq-item reveal">
+          <button class="faq-question" aria-expanded="false">
+            מה קורה עם הנתונים שלי אם אני מבטל?
+            <span class="faq-icon">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="6 9 12 15 18 9"/></svg>
+            </span>
+          </button>
+          <div class="faq-answer">
+            <p>הנתונים שלך נשמרים 30 יום לאחר ביטול המנוי. בתוך התקופה הזו אפשר לחזור ולמצוא הכל במקום. אחרי 30 יום, הנתונים נמחקים לצמיתות בהתאם למדיניות הפרטיות שלנו.</p>
+          </div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ========== FINAL CTA ========== -->
+  <section class="final-cta">
+    <div class="final-cta-bg">
+      <div class="orb orb-1"></div>
+      <div class="orb orb-2"></div>
+    </div>
+    <div class="container">
+      <div class="final-cta-content reveal">
+        <h2>מוכן להפסיק לבזבז זמן<br>על אקסלים?</h2>
+        <p>הצטרף ל-50+ סוכני ביטוח שכבר עברו לעבוד חכם. התחל היום ותראה תוצאות תוך דקות.</p>
+        <a href="#checkout" class="btn-primary">
+          התחל עכשיו — 179&#8362;/חודש
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M19 12H5"/><path d="M12 19l-7-7 7-7"/></svg>
+        </a>
+      </div>
+    </div>
+  </section>
+
+  <!-- ========== FOOTER ========== -->
+  <footer class="footer">
+    <div class="container">
+      <div class="footer-top">
+        <div class="footer-brand">
+          <div class="footer-logo" style="direction:ltr">Ago<span class="logo-accent">ra</span></div>
+          <p>מערכת ניהול עמלות חכמה לסוכני ביטוח. חישוב שכר אוטומטי, מעקב לקוחות, וניתוח תיק — הכל במקום אחד.</p>
+          <div class="footer-social">
+            <a href="#" aria-label="LinkedIn">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M16 8a6 6 0 0 1 6 6v7h-4v-7a2 2 0 0 0-2-2 2 2 0 0 0-2 2v7h-4v-7a6 6 0 0 1 6-6z"/><rect x="2" y="9" width="4" height="12"/><circle cx="4" cy="4" r="2"/></svg>
+            </a>
+            <a href="#" aria-label="Facebook">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M18 2h-3a5 5 0 0 0-5 5v3H7v4h3v8h4v-8h3l1-4h-4V7a1 1 0 0 1 1-1h3z"/></svg>
+            </a>
+            <a href="mailto:contact@genai.co.il" aria-label="Email">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 4h16c1.1 0 2 .9 2 2v12c0 1.1-.9 2-2 2H4c-1.1 0-2-.9-2-2V6c0-1.1.9-2 2-2z"/><polyline points="22,6 12,13 2,6"/></svg>
+            </a>
+          </div>
+        </div>
+
+        <div class="footer-col">
+          <h4>מוצר</h4>
+          <a href="#features">תכונות</a>
+          <a href="#pricing">מחיר</a>
+          <a href="#how">איך זה עובד</a>
+          <a href="#faq">שאלות נפוצות</a>
+        </div>
+
+        <div class="footer-col">
+          <h4>חברה</h4>
+          <a href="https://genai.co.il">genai.co.il</a>
+          <a href="mailto:contact@genai.co.il">צור קשר</a>
+          <a href="#">אודות</a>
+        </div>
+
+        <div class="footer-col">
+          <h4>משפטי</h4>
+          <a href="#terms">תנאי שימוש</a>
+          <a href="#privacy">מדיניות פרטיות</a>
+          <a href="#accessibility">נגישות</a>
+        </div>
+      </div>
+
+      <div class="footer-bottom">
+        <span>&copy; 2026 Agora by GenAI. כל הזכויות שמורות.</span>
+        <div class="footer-bottom-links">
+          <a href="#terms">תנאי שימוש</a>
+          <a href="#privacy">פרטיות</a>
+        </div>
+      </div>
+    </div>
+  </footer>
+
+  <!-- ========== SCRIPTS ========== -->
+  <script>
+    // ---- Navbar scroll effect ----
+    const nav = document.getElementById('nav');
+    let lastScroll = 0;
+
+    window.addEventListener('scroll', () => {
+      nav.classList.toggle('scrolled', window.scrollY > 60);
+    }, { passive: true });
+
+    // ---- Mobile menu ----
+    const mobileMenu = document.getElementById('mobileMenu');
+    const mobileMenuBtn = document.getElementById('mobileMenuBtn');
+    const mobileMenuClose = document.getElementById('mobileMenuClose');
+
+    mobileMenuBtn.addEventListener('click', () => mobileMenu.classList.add('open'));
+    mobileMenuClose.addEventListener('click', () => mobileMenu.classList.remove('open'));
+
+    document.querySelectorAll('.mobile-link').forEach(link => {
+      link.addEventListener('click', () => mobileMenu.classList.remove('open'));
+    });
+
+    // ---- FAQ accordion ----
+    document.querySelectorAll('.faq-question').forEach(btn => {
+      btn.addEventListener('click', () => {
+        const item = btn.parentElement;
+        const isOpen = item.classList.contains('open');
+        document.querySelectorAll('.faq-item.open').forEach(el => {
+          el.classList.remove('open');
+          el.querySelector('.faq-question')?.setAttribute('aria-expanded', 'false');
+        });
+        if (!isOpen) {
+          item.classList.add('open');
+          btn.setAttribute('aria-expanded', 'true');
+        }
+      });
+    });
+
+    // ---- Scroll reveal animations ----
+    const revealObserver = new IntersectionObserver((entries) => {
+      entries.forEach(entry => {
+        if (entry.isIntersecting) {
+          entry.target.classList.add('visible');
+          revealObserver.unobserve(entry.target);
+        }
+      });
+    }, {
+      threshold: 0.1,
+      rootMargin: '0px 0px -60px 0px'
+    });
+
+    document.querySelectorAll('.reveal').forEach(el => revealObserver.observe(el));
+
+    // ---- Animate chart bars on hero load ----
+    window.addEventListener('load', () => {
+      const bars = document.querySelectorAll('#heroChart .chart-bar');
+      const heights = [45, 62, 38, 78, 55, 85, 68, 92];
+      bars.forEach((bar, i) => {
+        bar.style.height = '0%';
+        setTimeout(() => {
+          bar.style.height = heights[i] + '%';
+        }, 300 + i * 100);
+      });
+    });
+
+    // ---- Smooth number counting for social proof ----
+    function animateNumber(el, target, suffix = '') {
+      const duration = 2000;
+      const start = 0;
+      const startTime = performance.now();
+
+      function update(currentTime) {
+        const elapsed = currentTime - startTime;
+        const progress = Math.min(elapsed / duration, 1);
+        const eased = 1 - Math.pow(1 - progress, 4);
+        const current = Math.floor(start + (target - start) * eased);
+
+        if (target >= 1000) {
+          el.innerHTML = current.toLocaleString() + '<span class="accent">' + suffix + '</span>';
+        } else if (target % 1 !== 0) {
+          const decimal = (start + (target - start) * eased).toFixed(1);
+          el.innerHTML = decimal + '<span class="accent">' + suffix + '</span>';
+        } else {
+          el.innerHTML = current + '<span class="accent">' + suffix + '</span>';
+        }
+
+        if (progress < 1) {
+          requestAnimationFrame(update);
+        }
+      }
+
+      requestAnimationFrame(update);
+    }
+
+    const proofObserver = new IntersectionObserver((entries) => {
+      entries.forEach(entry => {
+        if (entry.isIntersecting) {
+          const numbers = entry.target.querySelectorAll('.proof-number');
+          const targets = [
+            { value: 50, suffix: '+' },
+            { value: 10000, suffix: '+' },
+            { value: 99.9, suffix: '%' }
+          ];
+          numbers.forEach((num, i) => {
+            animateNumber(num, targets[i].value, targets[i].suffix);
+          });
+          proofObserver.unobserve(entry.target);
+        }
+      });
+    }, { threshold: 0.3 });
+
+    const proofGrid = document.querySelector('.social-proof-grid');
+    if (proofGrid) proofObserver.observe(proofGrid);
+
+    // ---- CTA click handler — redirect to Stripe Checkout ----
+    const API_URL = window.location.hostname === 'localhost'
+      ? 'http://localhost:3001'
+      : 'https://app.genai.co.il';
+
+    document.querySelectorAll('a[href="#checkout"]').forEach(link => {
+      link.addEventListener('click', async (e) => {
+        e.preventDefault();
+        const btn = e.currentTarget;
+        const originalText = btn.innerHTML;
+        btn.style.opacity = '0.7';
+        btn.style.pointerEvents = 'none';
+
+        try {
+          const res = await fetch(API_URL + '/api/v1/stripe/create-checkout', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({}),
+          });
+          const json = await res.json();
+          if (json.data && json.data.url) {
+            window.location.href = json.data.url;
+          } else {
+            alert('שגיאה ביצירת מפגש תשלום. אנא נסה שנית.');
+            btn.style.opacity = '1';
+            btn.style.pointerEvents = 'auto';
+          }
+        } catch (err) {
+          alert('שגיאה בחיבור לשרת. אנא נסה שנית.');
+          btn.style.opacity = '1';
+          btn.style.pointerEvents = 'auto';
+        }
+      });
+    });
+  </script>
+</body>
+</html>

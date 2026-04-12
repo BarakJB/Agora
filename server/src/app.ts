@@ -8,6 +8,9 @@ import { policyRouter } from './routes/policy.routes.js';
 import { commissionRouter } from './routes/commission.routes.js';
 import { taxRouter } from './routes/tax.routes.js';
 import { uploadRouter } from './routes/upload.routes.js';
+import { salesRouter } from './routes/sales.routes.js';
+import { predictionRouter } from './routes/prediction.routes.js';
+import { stripeRouter } from './routes/stripe.routes.js';
 import { requireAuth } from './middleware/auth.middleware.js';
 import { errorHandler } from './middleware/errorHandler.js';
 import { requestId } from './middleware/requestId.js';
@@ -62,6 +65,9 @@ if (process.env.NODE_ENV !== 'test') {
   );
 }
 
+// Stripe webhook — needs raw body, registered BEFORE express.json()
+app.use('/api/v1/stripe/webhook', stripeRouter);
+
 app.use(express.json());
 
 // Health check (public)
@@ -72,12 +78,17 @@ app.get('/api/health', (_req, res) => {
 // Auth routes (public)
 app.use('/api/v1/auth', authRouter);
 
+// Stripe checkout (public, uses JSON body)
+app.use('/api/v1/stripe', stripeRouter);
+
 // Protected routes — require valid JWT
 app.use('/api/v1/agents', requireAuth, agentRouter);
 app.use('/api/v1/policies', requireAuth, policyRouter);
 app.use('/api/v1/commissions', requireAuth, commissionRouter);
 app.use('/api/v1/tax', requireAuth, taxRouter);
 app.use('/api/v1/uploads', requireAuth, uploadRouter);
+app.use('/api/v1/sales', requireAuth, salesRouter);
+app.use('/api/v1/predictions', requireAuth, predictionRouter);
 
 app.use(errorHandler);
 

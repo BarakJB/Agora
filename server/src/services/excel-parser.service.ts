@@ -4,10 +4,13 @@ import { v4 as uuid } from 'uuid';
 // ============ Types ============
 
 export type ExcelReportType =
-  | 'nifraim'              // דוח נפרעים
-  | 'branch_distribution'  // התפלגות עמלות לפי ענפים
-  | 'agent_data'           // רשימת נתונים לסוכן
-  | 'product_distribution'; // התפלגות עמלות לפי מוצרים
+  | 'nifraim'                // נפרעים — עמלות שוטפות על פרמיות
+  | 'hekef'                  // היקף — עמלה חד-פעמית (ניוד/הצטרפות)
+  | 'accumulation_nifraim'   // נפרעים צבירה — גמל/השתלמות (ללא פנסיה)
+  | 'accumulation_hekef'     // היקף צבירה — תגמול על ניוד גמל/השתלמות
+  | 'branch_distribution'    // התפלגות עמלות לפי ענפים
+  | 'agent_data'             // רשימת נתונים לסוכן
+  | 'product_distribution';  // התפלגות עמלות לפי מוצרים
 
 export interface ParsedCommissionRecord {
   id: string;
@@ -51,6 +54,7 @@ export interface ParseResult {
   errors: ParseError[];
   totalRows: number;
   skippedRows: number;
+  detectedCompany: string | null;
 }
 
 export interface ParseError {
@@ -133,7 +137,10 @@ function parseNifraim(rows: Record<string, unknown>[]): { records: ParsedCommiss
     }
 
     const commission = toNumber(row['עמלה']);
-    if (commission === null) {
+    const paymentAmount = toNumber(row['סכום תשלום']);
+    // סכום תשלום = עמלה + דמי גביה - מקדמה. זה מה שהסוכן מקבל בפועל
+    const actualAmount = paymentAmount ?? commission;
+    if (actualAmount === null || actualAmount === 0) {
       skipped++;
       continue;
     }
@@ -149,7 +156,7 @@ function parseNifraim(rows: Record<string, unknown>[]): { records: ParsedCommiss
         subBranch: null,
         productName: toStr(row['סוג פוליסה']),
         premiumBase: toNumber(row['פרמיה']),
-        amount: commission,
+        amount: actualAmount,
         rate: null,
         collectionFee: toNumber(row['דמי גביה']),
         advanceAmount: toNumber(row['מקדמה']),
@@ -254,12 +261,21 @@ function parseAgentData(rows: Record<string, unknown>[]): { records: ParsedCommi
       continue;
     }
 
+    // Skip summary rows: no ת.ז means it's a total row
+    const insuredId = toStr(row['ת.ז']);
+    if (!insuredId) {
+      skipped++;
+      continue;
+    }
+
     const amountBeforeVat = toNumber(row['עמלה לפני מע"מ']);
     const amountWithVat = toNumber(row['עמלה כולל מע"מ']);
     const managementFeeAmount = toNumber(row['סכום ד"נ']);
-    const amount = amountBeforeVat ?? managementFeeAmount ?? 0;
+    // מוצרי צבירה = עמלה לפני מע"מ בלבד (ד"נ נספר בנפרד)
+    // תואם ל-PayLens עמודת "מוצרי צבירה"
+    const amount = amountBeforeVat ?? 0;
 
-    if (amount === 0 && amountWithVat === null && managementFeeAmount === null) {
+    if (amount === 0 && managementFeeAmount === null && amountWithVat === null) {
       skipped++;
       continue;
     }
@@ -319,8 +335,16 @@ function parseProductDistribution(rows: Record<string, unknown>[]): { records: P
       continue;
     }
 
+    // Skip summary rows without agent number
+    const agentNumber = toStr(row['מספר סוכן']);
+    if (!agentNumber) {
+      skipped++;
+      continue;
+    }
+
     const commissionWithVat = toNumber(row['עמלת סוכן כולל מעמ']);
     const amountWithoutVat = toNumber(row['סכום ששולם ללא מעמ']);
+    // סכום ששולם ללא מעמ = מה שהסוכן באמת מקבל
     const amount = amountWithoutVat ?? commissionWithVat ?? 0;
 
     if (amount === 0 && commissionWithVat === null) {
@@ -373,8 +397,26 @@ function parseProductDistribution(rows: Record<string, unknown>[]): { records: P
 
 // ============ Main Parser ============
 
+// hekef, accumulation_nifraim, accumulation_hekef share the same file structures
+// but are tagged differently for business logic (one-time vs recurring, accumulation vs premium-based)
+function withReportType(
+  parser: (rows: Record<string, unknown>[]) => { records: ParsedCommissionRecord[]; errors: ParseError[]; skipped: number },
+  overrideType: ExcelReportType,
+) {
+  return (rows: Record<string, unknown>[]) => {
+    const result = parser(rows);
+    return {
+      ...result,
+      records: result.records.map((r) => ({ ...r, reportType: overrideType })),
+    };
+  };
+}
+
 const PARSERS: Record<ExcelReportType, (rows: Record<string, unknown>[]) => { records: ParsedCommissionRecord[]; errors: ParseError[]; skipped: number }> = {
   nifraim: parseNifraim,
+  hekef: withReportType(parseNifraim, 'hekef'),
+  accumulation_nifraim: withReportType(parseAgentData, 'accumulation_nifraim'),
+  accumulation_hekef: withReportType(parseAgentData, 'accumulation_hekef'),
   branch_distribution: parseBranchDistribution,
   agent_data: parseAgentData,
   product_distribution: parseProductDistribution,
@@ -383,11 +425,45 @@ const PARSERS: Record<ExcelReportType, (rows: Record<string, unknown>[]) => { re
 /**
  * Parse a single detected sheet from a workbook.
  */
+/** Try to detect insurance company from file data */
+function detectCompany(rows: Record<string, unknown>[], reportType: ExcelReportType): string | null {
+  // agent_data has "חברה מנהלת" column (e.g. "הראל גמל")
+  if (reportType === 'agent_data') {
+    for (const row of rows) {
+      const val = toStr(row['חברה מנהלת']);
+      if (val) {
+        // Normalize: "הראל גמל" → "הראל"
+        const COMPANY_PATTERNS: [RegExp, string][] = [
+          [/הראל/i, 'הראל'],
+          [/מגדל/i, 'מגדל'],
+          [/הפניקס|פניקס/i, 'הפניקס'],
+          [/כלל/i, 'כלל'],
+          [/מנורה/i, 'מנורה מבטחים'],
+          [/הכשרה/i, 'הכשרה'],
+          [/אלטשולר/i, 'אלטשולר שחם'],
+          [/מיטב/i, 'מיטב דש'],
+          [/אנליסט/i, 'אנליסט'],
+          [/פסגות/i, 'פסגות'],
+        ];
+        for (const [pattern, name] of COMPANY_PATTERNS) {
+          if (pattern.test(val)) return name;
+        }
+        return val; // Return raw value if no pattern match
+      }
+    }
+  }
+
+  // product_name column in agent_data may also contain company (e.g. "הראל גמל")
+  // For other report types — no reliable detection
+  return null;
+}
+
 function parseSheet(workbook: XLSX.WorkBook, sheetName: string, reportType: ExcelReportType): ParseResult {
   const sheet = workbook.Sheets[sheetName];
   const rows = XLSX.utils.sheet_to_json<Record<string, unknown>>(sheet, { defval: null });
   const parser = PARSERS[reportType];
   const { records, errors, skipped } = parser(rows);
+  const detectedCompany = detectCompany(rows, reportType);
 
   return {
     reportType,
@@ -396,6 +472,7 @@ function parseSheet(workbook: XLSX.WorkBook, sheetName: string, reportType: Exce
     errors,
     totalRows: rows.length,
     skippedRows: skipped,
+    detectedCompany,
   };
 }
 

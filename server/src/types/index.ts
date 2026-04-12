@@ -102,6 +102,75 @@ export interface SalarySummary {
   conversionRate: number;
 }
 
+// ============ Prediction ============
+
+export type CommissionSourceType =
+  | 'nifraim'          // Recurring on collected premiums
+  | 'accumulation'     // AUM-based (יתרת סגירה)
+  | 'management_fee'   // דמי ניהול
+  | 'collection_fee'   // דמי גביה
+  | 'advance';         // מקדמות (prepaid, deducted from future)
+
+export type ConfidenceLevel = 'high' | 'medium' | 'low';
+
+export interface HistoricalCommission {
+  period: string;
+  type: CommissionSourceType;
+  amount: number;
+}
+
+export interface AccumulationBalance {
+  agentId: string;
+  productType: ProductType;
+  insuranceCompany: string;
+  closingBalance: number;     // יתרת סגירה
+  period: string;
+  managementFeeRate: number;  // % דמי ניהול
+  commissionRate: number;     // % עמלת צבירה
+}
+
+export interface AdvanceBalance {
+  agentId: string;
+  totalAdvanced: number;
+  totalRecouped: number;
+  remainingBalance: number;
+  monthlyDeduction: number;
+}
+
+export interface PredictionBreakdown {
+  nifraim: number;
+  accumulation: number;
+  managementFees: number;
+  collectionFees: number;
+  oneTimeCommissions: number;
+  advanceDeduction: number;
+}
+
+export interface SalaryPrediction {
+  agentId: string;
+  period: string;
+  breakdown: PredictionBreakdown;
+  grossPrediction: number;
+  tax: TaxCalculation;
+  netPrediction: number;
+  confidence: ConfidenceLevel;
+  dataPointsUsed: number;
+  assumptions: string[];
+}
+
+export interface DealCommissionPrediction {
+  dealType: ProductType;
+  premiumAmount: number;
+  insuranceCompany: string;
+  expectedOneTime: number;
+  expectedMonthlyRecurring: number;
+  expectedAnnualTotal: number;
+  monthlyImpact: {
+    grossIncrease: number;
+    netIncrease: number;
+  };
+}
+
 // ============ Upload ============
 
 export interface UploadRecord {

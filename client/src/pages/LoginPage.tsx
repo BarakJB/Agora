@@ -15,7 +15,6 @@ export default function LoginPage() {
   const authError = useAuthStore((s) => s.error);
   const clearError = useAuthStore((s) => s.clearError);
   const loadData = useDataStore((s) => s.loadData);
-  const fetchFromApi = useDataStore((s) => s.fetchFromApi);
 
   const [tab, setTab] = useState<Tab>('demo');
   const [email, setEmail] = useState('');
@@ -35,7 +34,6 @@ export default function LoginPage() {
     e.preventDefault();
     try {
       await loginWithApi(email, password);
-      await fetchFromApi();
       navigate('/dashboard');
     } catch {
       // Error is set in authStore
@@ -45,8 +43,7 @@ export default function LoginPage() {
   async function handleRegister(e: React.FormEvent) {
     e.preventDefault();
     try {
-      await registerWithApi({ name, email, phone, licenseNumber: license });
-      await fetchFromApi();
+      await registerWithApi({ name, email, password, phone, licenseNumber: license });
       navigate('/dashboard');
     } catch {
       // Error is set in authStore
@@ -263,6 +260,19 @@ export default function LoginPage() {
                     value={email}
                     onChange={(e) => setEmail(e.target.value)}
                     required
+                    disabled={authLoading}
+                  />
+                </div>
+                <div className="space-y-2">
+                  <label className="block text-xs font-label font-semibold uppercase tracking-wider text-on-surface-variant">סיסמה</label>
+                  <input
+                    className="w-full bg-surface-container-high border-none rounded-lg p-4 focus:ring-2 focus:ring-primary/40 text-on-surface placeholder:text-outline"
+                    placeholder="לפחות 6 תווים"
+                    type="password"
+                    value={password}
+                    onChange={(e) => setPassword(e.target.value)}
+                    required
+                    minLength={6}
                     disabled={authLoading}
                   />
                 </div>

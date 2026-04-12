@@ -13,6 +13,7 @@ import { validate } from '../middleware/validate.js';
 import { idParamSchema } from '../validators/common.schemas.js';
 import { uploadListQuerySchema, type UploadListQuery } from '../validators/upload.schemas.js';
 import { parseExcelBuffer } from '../services/excel-parser.service.js';
+import { parseAgreementFile } from '../services/agreement-parser.service.js';
 
 const upload = multer({ storage: multer.memoryStorage(), limits: { fileSize: 10 * 1024 * 1024 } });
 
@@ -169,7 +170,65 @@ uploadRouter.post('/parse', upload.single('file'), async (req, res, next) => {
       return;
     }
 
-    const results = parseExcelBuffer(file.buffer);
+    // Try commission reports first, fallback to agreement parser
+    let results;
+    let isAgreement = false;
+    try {
+      results = parseExcelBuffer(file.buffer);
+    } catch (commissionErr) {
+      // Not a commission file — try agreement parser
+      try {
+        const agreement = parseAgreementFile(file.buffer);
+        isAgreement = true;
+        results = [{
+          reportType: 'agreement' as const,
+          sheetName: 'הסכם עמלות',
+          records: agreement.rates.map((r) => ({
+            id: '',
+            reportType: 'agreement' as const,
+            agentNumber: null,
+            agentName: agreement.agentName,
+            policyNumber: null,
+            branch: r.product,
+            subBranch: r.commissionType,
+            productName: r.company,
+            premiumBase: null,
+            amount: r.rate ?? 0,
+            rate: r.rate,
+            collectionFee: null,
+            advanceAmount: null,
+            advanceBalance: null,
+            amountBeforeVat: null,
+            amountWithVat: null,
+            accumulationBalance: null,
+            managementFeePct: null,
+            managementFeeAmount: null,
+            transactionType: r.isFixedAmount ? 'fixed' : 'percentage',
+            commissionSource: null,
+            employerName: null,
+            employerId: null,
+            insuredName: null,
+            insuredId: null,
+            productionMonth: null,
+            processingMonth: null,
+            fundType: null,
+            planType: null,
+            paymentAmount: null,
+            contractNumber: null,
+            rawRow: {},
+          })),
+          errors: [],
+          totalRows: agreement.rates.length,
+          skippedRows: 0,
+          detectedCompany: null,
+        }];
+      } catch {
+        // Neither commission nor agreement
+        const msg = commissionErr instanceof Error ? commissionErr.message : 'Unknown file format';
+        res.status(400).json({ data: null, error: msg, meta: null });
+        return;
+      }
+    }
 
     const totalRecords = results.reduce((sum, r) => sum + r.records.length, 0);
     const totalErrors = results.reduce((sum, r) => sum + r.errors.length, 0);
@@ -183,13 +242,10 @@ uploadRouter.post('/parse', upload.single('file'), async (req, res, next) => {
         sheetsDetected: results.length,
         totalRecords,
         totalErrors,
+        isAgreement,
       },
     });
   } catch (err) {
-    if (err instanceof Error && err.message.includes('No recognized sheet')) {
-      res.status(400).json({ data: null, error: err.message, meta: null });
-      return;
-    }
     next(err);
   }
 });

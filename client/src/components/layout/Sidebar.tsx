@@ -8,7 +8,9 @@ import NewPolicyModal from '../ui/NewPolicyModal';
 const navItems = [
   { to: '/dashboard', icon: 'dashboard', label: 'דשבורד' },
   { to: '/policies', icon: 'description', label: 'מעקב פוליסות' },
+  { to: '/portfolio', icon: 'analytics', label: 'ניתוח תיק' },
   { to: '/upload', icon: 'upload_file', label: 'העלאת עמלות' },
+  { to: '/monthly', icon: 'calendar_month', label: 'דוחות חודשיים' },
   { to: '/settings', icon: 'settings', label: 'הגדרות' },
 ];
 
@@ -31,8 +33,7 @@ export default function Sidebar({ mobileOpen, onClose }: { mobileOpen: boolean; 
 
       <aside
         className={clsx(
-          'fixed top-0 h-screen w-72 flex flex-col bg-surface-container-low z-40 transition-transform duration-300',
-          'end-0',
+          'fixed top-0 right-0 h-screen w-72 flex flex-col bg-surface-container-low z-40 transition-transform duration-300',
           mobileOpen ? 'translate-x-0' : 'translate-x-full lg:translate-x-0',
         )}
       >
@@ -42,8 +43,8 @@ export default function Sidebar({ mobileOpen, onClose }: { mobileOpen: boolean; 
               <Icon name="account_balance" className="text-white" size="sm" />
             </div>
             <div>
-              <h1 className="text-xl font-bold text-primary font-headline">PayAgent</h1>
-              <p className="text-[10px] uppercase tracking-widest text-on-surface-variant">Insurance Ledger</p>
+              <h1 className="text-xl font-bold text-primary font-headline" dir="ltr">Agora</h1>
+              <p className="text-[10px] uppercase tracking-widest text-on-surface-variant">ניהול עמלות חכם</p>
             </div>
           </div>
 

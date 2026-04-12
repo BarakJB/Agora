@@ -1,173 +1,277 @@
-import { useEffect } from 'react';
+import { useState, useEffect, useCallback, useRef } from 'react';
 import Icon from '../components/ui/Icon';
-import { useDataStore } from '../store/dataStore';
-import { useAuthStore } from '../store/authStore';
+import {
+  searchClients,
+  getClientTransactions,
+  type ClientSummary,
+  type ClientTransaction,
+} from '../services/api';
 
 export default function PolicyTrackerPage() {
-  const policies = useDataStore((s) => s.policies);
-  const carrierCommissions = useDataStore((s) => s.carrierCommissions);
-  const policyBreakdown = useDataStore((s) => s.policyBreakdown);
-  const totalCommissions = useDataStore((s) => s.totalCommissions);
-  const targetProgress = useDataStore((s) => s.targetProgress);
-  const projectedTotal = useDataStore((s) => s.projectedTotal);
-  const userMode = useAuthStore((s) => s.userMode);
-  const loading = useDataStore((s) => s.loading);
-  const fetchFromApi = useDataStore((s) => s.fetchFromApi);
+  const [search, setSearch] = useState('');
+  const [clients, setClients] = useState<ClientSummary[]>([]);
+  const [loading, setLoading] = useState(false);
+  const [selectedClientId, setSelectedClientId] = useState<string | null>(null);
+  const [transactions, setTransactions] = useState<ClientTransaction[]>([]);
+  const [txLoading, setTxLoading] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const debounceRef = useRef<ReturnType<typeof setTimeout>>(undefined);
 
-  const isEmpty = userMode === 'new' && policies.length === 0;
   const fmt = (n: number) => n.toLocaleString('he-IL');
-  const maxCarrier = carrierCommissions.length > 0 ? carrierCommissions[0].amount : 1;
 
-  useEffect(() => {
-    if (userMode === 'new' && policies.length === 0) {
-      fetchFromApi();
+  const fetchClients = useCallback(async (term: string) => {
+    setLoading(true);
+    setError(null);
+    try {
+      const res = await searchClients(term || undefined);
+      setClients(res.data ?? []);
+    } catch {
+      setError('שגיאה בטעינת לקוחות');
+      setClients([]);
+    } finally {
+      setLoading(false);
     }
-  }, [userMode, policies.length, fetchFromApi]);
+  }, []);
 
-  if (loading) {
-    return (
-      <div className="p-8 flex items-center justify-center min-h-[60vh]">
-        <div className="text-center space-y-4">
-          <div className="w-12 h-12 rounded-full border-4 border-primary/20 border-t-primary animate-spin mx-auto" />
-          <p className="text-on-surface-variant font-medium">טוען פוליסות...</p>
-        </div>
-      </div>
-    );
-  }
+  // Load all clients on mount
+  useEffect(() => {
+    fetchClients('');
+  }, [fetchClients]);
+
+  // Debounced search
+  useEffect(() => {
+    if (debounceRef.current) clearTimeout(debounceRef.current);
+    debounceRef.current = setTimeout(() => {
+      fetchClients(search);
+    }, 300);
+    return () => {
+      if (debounceRef.current) clearTimeout(debounceRef.current);
+    };
+  }, [search, fetchClients]);
+
+  const handleClientClick = async (clientId: string) => {
+    if (selectedClientId === clientId) {
+      setSelectedClientId(null);
+      setTransactions([]);
+      return;
+    }
+    setSelectedClientId(clientId);
+    setTxLoading(true);
+    try {
+      const res = await getClientTransactions(clientId);
+      setTransactions(res.data ?? []);
+    } catch {
+      setTransactions([]);
+    } finally {
+      setTxLoading(false);
+    }
+  };
 
   return (
-    <div className="p-8 max-w-7xl mx-auto space-y-8">
-      {/* Hero: Total Commission */}
-      <section className="grid grid-cols-1 lg:grid-cols-3 gap-8">
-        <div className="lg:col-span-2 relative overflow-hidden rounded-lg editorial-gradient p-10 text-on-primary flex flex-col justify-between min-h-[320px]">
-          <div className="z-10">
-            <p className="font-label text-on-primary-container text-xs font-bold uppercase tracking-widest mb-2">
-              סה״כ עמלות בתיק
-            </p>
-            <h3 className="font-headline text-3xl md:text-6xl font-black leading-tight">&#8362;{fmt(totalCommissions)}</h3>
-          </div>
-          <div className="flex justify-between items-end z-10">
-            {!isEmpty && (
-              <div className="flex gap-2 items-center bg-secondary-container/20 backdrop-blur-sm px-4 py-2 rounded-full">
-                <Icon name="trending_up" className="text-secondary-fixed-dim" />
-                <span className="text-secondary-fixed-dim font-bold">+12.4% מהחודש הקודם</span>
-              </div>
-            )}
-            <button className="px-6 py-3 bg-white text-primary rounded-lg font-bold flex items-center gap-2 hover:bg-opacity-90 transition-all">
-              <Icon name="download" />
-              הורד דוח PDF
-            </button>
-          </div>
-          <div className="absolute -bottom-20 -left-20 w-80 h-80 bg-white/5 rounded-full blur-3xl" />
-        </div>
+    <div className="p-8 max-w-7xl mx-auto space-y-8" dir="rtl">
+      {/* Header */}
+      <section>
+        <h1 className="font-headline text-3xl md:text-4xl font-black tracking-tight mb-2">
+          מעקב לקוחות ופוליסות
+        </h1>
+        <p className="text-on-surface-variant text-sm mb-6">
+          חיפוש לקוחות לפי שם או תעודת זהות
+        </p>
 
-        <div className="bg-surface-container-low rounded-lg p-8 flex flex-col justify-center gap-6">
-          <div>
-            <h4 className="text-on-surface-variant text-xs font-bold uppercase tracking-widest mb-4">התקדמות יעד</h4>
-            <div className="flex mb-2 items-center justify-between">
-              <span className="text-xs font-semibold inline-block py-1 px-2 uppercase rounded-full text-secondary bg-secondary-container">
-                {targetProgress >= 80 ? 'בדרך הנכונה' : targetProgress > 0 ? 'בתהליך' : 'התחלה'}
-              </span>
-              <span className="text-xs font-bold inline-block text-secondary">{targetProgress}%</span>
-            </div>
-            <div className="overflow-hidden h-2 mb-4 flex rounded bg-surface-variant">
-              <div className="bg-secondary transition-all duration-700" style={{ width: `${targetProgress}%` }} />
-            </div>
-          </div>
-          <div className="space-y-1">
-            <p className="text-on-surface-variant text-xs">תחזית לסוף חודש</p>
-            <p className="text-2xl font-headline font-bold">&#8362;{fmt(projectedTotal)}</p>
-          </div>
+        {/* Search Bar */}
+        <div className="relative max-w-xl">
+          <Icon
+            name="search"
+            className="absolute right-4 top-1/2 -translate-y-1/2 text-on-surface-variant/50"
+          />
+          <input
+            type="text"
+            value={search}
+            onChange={(e) => setSearch(e.target.value)}
+            placeholder="חפש לפי שם לקוח או ת.ז..."
+            className="w-full pr-12 pl-4 py-3 bg-surface-container-lowest rounded-lg text-on-surface placeholder:text-on-surface-variant/40 focus:outline-none focus:ring-2 focus:ring-primary/30 transition-all font-label text-sm"
+          />
         </div>
       </section>
 
-      {/* Policy Breakdown */}
-      {policyBreakdown.length > 0 && (
-        <section className="space-y-6">
-          <div className="flex items-center justify-between">
-            <h3 className="font-headline text-2xl font-bold tracking-tight">פילוח לפי סוג פוליסה</h3>
-          </div>
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
-            {policyBreakdown.map((p) => (
-              <div key={p.type} className="bg-surface-container-lowest p-6 rounded-lg transition-transform hover:scale-[1.01]">
-                <div className="flex justify-between items-start mb-6">
-                  <div className={`p-2 ${p.iconBg} rounded-lg`}>
-                    <Icon name={p.icon} className={p.iconColor} />
+      {/* Error */}
+      {error && (
+        <div className="bg-error-container/20 text-error rounded-lg p-4 text-sm">
+          {error}
+        </div>
+      )}
+
+      {/* Loading */}
+      {loading && (
+        <div className="text-center py-12 text-on-surface-variant">
+          <Icon name="hourglass_empty" size="lg" className="animate-pulse mb-2" />
+          <p className="text-sm">טוען...</p>
+        </div>
+      )}
+
+      {/* Empty state */}
+      {!loading && clients.length === 0 && !error && (
+        <section className="bg-surface-container-lowest rounded-lg p-16 text-center">
+          <Icon name="person_search" size="xl" className="text-on-surface-variant/20 mb-4" />
+          <h3 className="text-xl font-bold text-on-surface mb-2">
+            {search ? 'לא נמצאו תוצאות' : 'חפש לקוח לפי שם או תעודת זהות'}
+          </h3>
+          <p className="text-on-surface-variant">
+            {search
+              ? 'נסה לחפש עם מילת מפתח אחרת'
+              : 'הקלד שם לקוח או מספר תעודת זהות בשדה החיפוש'}
+          </p>
+        </section>
+      )}
+
+      {/* Results */}
+      {!loading && clients.length > 0 && (
+        <section className="space-y-4">
+          <p className="text-xs text-on-surface-variant font-bold uppercase tracking-widest">
+            {clients.length} לקוחות
+          </p>
+
+          <div className="space-y-3">
+            {clients.map((client) => (
+              <div key={client.insuredId}>
+                {/* Client Card */}
+                <button
+                  onClick={() => handleClientClick(client.insuredId)}
+                  className={`w-full text-right bg-surface-container-lowest rounded-lg p-6 transition-all hover:scale-[1.005] hover:shadow-sm ${
+                    selectedClientId === client.insuredId
+                      ? 'ring-2 ring-primary/30'
+                      : ''
+                  }`}
+                >
+                  <div className="flex items-center justify-between">
+                    <div className="flex items-center gap-4">
+                      <div className="w-12 h-12 rounded-lg bg-surface-container-low flex items-center justify-center">
+                        <Icon name="person" className="text-primary/50" />
+                      </div>
+                      <div>
+                        <p className="font-bold text-base">{client.insuredName}</p>
+                        <p className="text-xs text-on-surface-variant mt-0.5">
+                          ת.ז {client.insuredId}
+                        </p>
+                      </div>
+                    </div>
+                    <div className="flex items-center gap-6">
+                      {/* Monthly average — the key metric */}
+                      <div className="text-left">
+                        <p className="text-xl font-headline font-black text-primary">
+                          &#8362;{fmt(client.monthlyAverage ?? Math.round(client.totalCommission / Math.max(client.monthsActive || 1, 1)))}
+                        </p>
+                        <p className="text-[10px] text-on-surface-variant uppercase tracking-wider">
+                          ממוצע חודשי
+                        </p>
+                        <p className="text-[10px] text-secondary/60">
+                          נטו: {fmt(Math.round((client.monthlyAverage ?? client.totalCommission / Math.max(client.monthsActive || 1, 1)) * 0.5))}₪
+                        </p>
+                      </div>
+                      {/* Months active */}
+                      <div className="text-left hidden sm:block">
+                        <p className="font-bold text-sm">{client.monthsActive || '—'}</p>
+                        <p className="text-[10px] text-on-surface-variant uppercase tracking-wider">
+                          חודשים
+                        </p>
+                      </div>
+                      {/* Last month */}
+                      <div className="text-left hidden md:block">
+                        <p className="font-bold text-sm">{client.lastMonth}</p>
+                        <p className="text-[10px] text-on-surface-variant uppercase tracking-wider">
+                          חודש אחרון
+                        </p>
+                      </div>
+                      {/* Products */}
+                      <div className="hidden lg:flex gap-1 flex-wrap max-w-[200px]">
+                        {(client.products || []).map((p) => (
+                          <span
+                            key={p}
+                            className="text-[10px] bg-primary-fixed text-primary px-2 py-0.5 rounded-full font-medium"
+                          >
+                            {p}
+                          </span>
+                        ))}
+                        {client.insuranceCompanies.map((co) => (
+                          <span
+                            key={co}
+                            className="text-[10px] bg-surface-container-low px-2 py-0.5 rounded-full text-on-surface-variant"
+                          >
+                            {co}
+                          </span>
+                        ))}
+                      </div>
+                      <Icon
+                        name={selectedClientId === client.insuredId ? 'expand_less' : 'expand_more'}
+                        className="text-on-surface-variant/40"
+                      />
+                    </div>
                   </div>
-                  <span className="text-[10px] font-bold text-on-surface-variant uppercase bg-surface-container-low px-2 py-1 rounded">{p.typeHe}</span>
-                </div>
-                <p className="text-2xl font-headline font-black mb-1">&#8362;{fmt(p.amount)}</p>
-                <div className="w-full bg-surface-container-high h-1.5 rounded-full mt-4 overflow-hidden">
-                  <div className={`${p.barColor} h-full`} style={{ width: `${p.pct}%` }} />
-                </div>
-                <p className="text-[10px] mt-2 text-on-surface-variant">{p.pct}% מסך התיק</p>
+                </button>
+
+                {/* Expanded Transactions — grouped by month */}
+                {selectedClientId === client.insuredId && (
+                  <div className="bg-surface-container-low rounded-lg mt-1 animate-in">
+                    {txLoading ? (
+                      <p className="text-center text-on-surface-variant text-sm py-6">טוען עסקאות...</p>
+                    ) : transactions.length === 0 ? (
+                      <p className="text-center text-on-surface-variant text-sm py-6">אין עסקאות</p>
+                    ) : (
+                      <div className="space-y-0">
+                        {(() => {
+                          // Group by month, sort months DESC, sort rows by amount DESC
+                          const byMonth: Record<string, typeof transactions> = {};
+                          transactions.forEach(tx => {
+                            const m = tx.processingMonth || 'ללא';
+                            if (!byMonth[m]) byMonth[m] = [];
+                            byMonth[m].push(tx);
+                          });
+                          const sortedMonths = Object.keys(byMonth).sort((a, b) => b.localeCompare(a));
+
+                          return sortedMonths.map((month, mi) => {
+                            const rows = byMonth[month].sort((a, b) => b.commissionAmount - a.commissionAmount);
+                            const monthTotal = rows.reduce((s, r) => s + r.commissionAmount, 0);
+                            const HEBREW_MONTHS = ['ינואר','פברואר','מרץ','אפריל','מאי','יוני','יולי','אוגוסט','ספטמבר','אוקטובר','נובמבר','דצמבר'];
+                            const [y, m] = month.split('-');
+                            const monthLabel = m ? `${HEBREW_MONTHS[parseInt(m) - 1]} ${y}` : month;
+
+                            return (
+                              <div key={month}>
+                                {/* Month header */}
+                                <div className={`px-6 py-3 flex justify-between items-center ${mi === 0 ? 'rounded-t-lg' : ''} bg-surface-container-high`}>
+                                  <span className="font-bold text-sm text-on-surface font-headline">{monthLabel}</span>
+                                  <div className="flex items-center gap-3">
+                                    <span className="text-xs text-on-surface-variant">{rows.length} רשומות</span>
+                                    <span className="font-black text-primary">{fmt(Math.round(monthTotal))}₪</span>
+                                    <span className="text-[10px] text-on-surface-variant/50">נטו: {fmt(Math.round(monthTotal * 0.5))}₪</span>
+                                  </div>
+                                </div>
+                                {/* Rows */}
+                                <table className="w-full text-sm">
+                                  <tbody>
+                                    {rows.map((tx) => (
+                                      <tr key={tx.id} className="hover:bg-surface-container-lowest transition-colors">
+                                        <td className="px-6 py-2.5 text-on-surface-variant w-24">{tx.branch ?? '—'}</td>
+                                        <td className="py-2.5 text-on-surface-variant">{tx.productName ?? '—'}</td>
+                                        <td className="py-2.5 text-on-surface-variant w-24">{tx.premium != null ? `${fmt(tx.premium)}₪` : '—'}</td>
+                                        <td className="py-2.5 font-bold text-end w-28">
+                                          <span className={tx.commissionAmount < 0 ? 'text-error' : 'text-secondary'}>{fmt(tx.commissionAmount)}₪</span>
+                                        </td>
+                                        <td className="py-2.5 text-on-surface-variant text-xs w-20">{tx.insuranceCompany}</td>
+                                      </tr>
+                                    ))}
+                                  </tbody>
+                                </table>
+                              </div>
+                            );
+                          });
+                        })()}
+                      </div>
+                    )}
+                  </div>
+                )}
               </div>
             ))}
-          </div>
-        </section>
-      )}
-
-      {/* Empty State */}
-      {isEmpty && (
-        <section className="bg-surface-container-lowest rounded-lg p-16 text-center">
-          <Icon name="folder_open" size="xl" className="text-on-surface-variant/20 mb-4" />
-          <h3 className="text-xl font-bold text-on-surface mb-2">אין פוליסות עדיין</h3>
-          <p className="text-on-surface-variant mb-6">הוסף פוליסה חדשה או העלה קובץ עמלות כדי להתחיל</p>
-          <button className="bg-primary text-on-primary px-8 py-3 rounded-lg font-bold hover:shadow-lg transition-all">
-            <Icon name="add" className="inline-block align-middle ml-2" />
-            הוסף פוליסה ראשונה
-          </button>
-        </section>
-      )}
-
-      {/* Bottom Row */}
-      {!isEmpty && (
-        <section className="grid grid-cols-1 lg:grid-cols-2 gap-8 pb-12">
-          {/* Commission by Carrier */}
-          <div className="bg-surface-container-low rounded-lg p-8 space-y-8">
-            <h4 className="font-headline text-lg font-bold">עמלות לפי חברת ביטוח</h4>
-            <div className="space-y-6">
-              {carrierCommissions.map((c) => (
-                <div key={c.name} className="space-y-2">
-                  <div className="flex justify-between text-xs font-bold">
-                    <span>{c.name}</span>
-                    <span>&#8362;{fmt(c.amount)}</span>
-                  </div>
-                  <div className="w-full bg-surface-container-highest h-8 rounded-lg overflow-hidden">
-                    <div
-                      className="bg-primary-container h-full transition-all duration-500"
-                      style={{ width: `${(c.amount / maxCarrier) * 100}%`, opacity: Math.max(0.3, c.amount / maxCarrier) }}
-                    />
-                  </div>
-                </div>
-              ))}
-            </div>
-          </div>
-
-          {/* Policies List */}
-          <div className="bg-surface-container-lowest rounded-lg p-8">
-            <h4 className="font-headline text-lg font-bold mb-8">פוליסות אחרונות</h4>
-            <div className="space-y-6">
-              {policies.slice(0, 5).map((p) => (
-                <div key={p.id} className="flex items-center justify-between">
-                  <div className="flex items-center gap-4">
-                    <div className="w-12 h-12 rounded-lg bg-surface-container-low flex items-center justify-center">
-                      <Icon name="policy" className="text-primary/40" />
-                    </div>
-                    <div>
-                      <p className="font-bold text-sm">{p.clientName}</p>
-                      <p className="text-[10px] text-on-surface-variant uppercase tracking-wider">
-                        {p.insuranceCompany} &bull; {p.productTypeHe}
-                      </p>
-                    </div>
-                  </div>
-                  <div className="text-start">
-                    <p className="font-headline font-bold text-secondary">&#8362;{fmt(p.commissionAmount)}</p>
-                    <p className="text-[10px] text-on-surface-variant uppercase tracking-wider">{p.startDate}</p>
-                  </div>
-                </div>
-              ))}
-            </div>
           </div>
         </section>
       )}

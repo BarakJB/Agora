@@ -28,7 +28,11 @@ export interface CommissionRow {
   amount: number;
   insuranceCompany: string;
   date: string;
+  processingMonth: string; // format: "YYYY-MM"
   productTypeHe: string;
+  clientIdNumber?: string;
+  branch?: string;
+  premiumAmount?: number;
 }
 
 export interface UploadRow {
@@ -83,7 +87,10 @@ interface DataState {
   loadData: (mode: UserMode) => void;
   fetchFromApi: () => Promise<void>;
   addPolicy: (policy: PolicyRow) => void;
+  addCommission: (commission: CommissionRow) => void;
+  addCommissionsBatch: (commissions: CommissionRow[]) => void;
   addUpload: (upload: UploadRow) => void;
+  loadSalesFromDb: () => Promise<void>;
 }
 
 const PRODUCT_TYPE_MAP: Record<string, { typeHe: string; icon: string; iconBg: string; iconColor: string; barColor: string }> = {
@@ -101,6 +108,15 @@ const COMMISSION_TYPE_HE: Record<string, string> = {
   recurring: 'שוטפת',
   volume: 'היקף',
   bonus: 'בונוס',
+};
+
+const REPORT_TYPE_HE: Record<string, string> = {
+  nifraim: 'נפרעים',
+  hekef: 'היקף',
+  agent_data: 'צבירה (פירוט)',
+  accumulation_nifraim: 'נפרעים צבירה',
+  accumulation_hekef: 'היקף צבירה',
+  product_distribution: 'סיכום תשלום',
 };
 
 function getInitials(name: string): string {
@@ -172,6 +188,9 @@ function mapApiPolicy(p: api.Policy): PolicyRow {
 }
 
 function mapApiCommission(c: api.Commission): CommissionRow {
+  const d = new Date(c.paymentDate);
+  const m = String(d.getMonth() + 1).padStart(2, '0');
+  const y = d.getFullYear();
   return {
     id: c.id,
     policyId: c.policyId,
@@ -181,7 +200,8 @@ function mapApiCommission(c: api.Commission): CommissionRow {
     typeHe: COMMISSION_TYPE_HE[c.type] || c.type,
     amount: c.amount,
     insuranceCompany: c.insuranceCompany,
-    date: new Date(c.paymentDate).toLocaleDateString('he-IL'),
+    date: d.toLocaleDateString('he-IL'),
+    processingMonth: `${y}-${m}`,
     productTypeHe: '',
   };
 }
@@ -216,16 +236,16 @@ function enrichCommissions(commissions: CommissionRow[], policies: PolicyRow[]):
 
 // ─── Demo Data ────────────────────────────────────────────────
 const DEMO_COMMISSIONS: CommissionRow[] = [
-  { id: '1', policyId: '1', clientName: 'ישראל שראבי', clientInitials: 'יש', type: 'one_time', typeHe: 'חד-פעמית', amount: 1860, insuranceCompany: 'הראל', date: '14/01/2026', productTypeHe: 'ביטוח מנהלים' },
-  { id: '2', policyId: '2', clientName: 'מרים רפאלי', clientInitials: 'מר', type: 'one_time', typeHe: 'חד-פעמית', amount: 1230, insuranceCompany: 'מגדל', date: '12/01/2026', productTypeHe: 'פנסיה מקיפה' },
-  { id: '3', policyId: '3', clientName: 'דניאל גולדשטיין', clientInitials: 'דג', type: 'one_time', typeHe: 'חד-פעמית', amount: 525, insuranceCompany: 'הפניקס', date: '10/01/2026', productTypeHe: 'ביטוח בריאות' },
-  { id: '4', policyId: '4', clientName: 'אילנה לוי', clientInitials: 'אל', type: 'one_time', typeHe: 'חד-פעמית', amount: 2250, insuranceCompany: 'כלל', date: '09/01/2026', productTypeHe: 'קרן השתלמות' },
-  { id: '5', policyId: '5', clientName: 'יוסף חדד', clientInitials: 'יח', type: 'one_time', typeHe: 'חד-פעמית', amount: 1470, insuranceCompany: 'מנורה מבטחים', date: '07/01/2026', productTypeHe: 'ביטוח חיים' },
-  { id: '6', policyId: '6', clientName: 'שרה כהן', clientInitials: 'שכ', type: 'one_time', typeHe: 'חד-פעמית', amount: 1320, insuranceCompany: 'הראל', date: '05/02/2026', productTypeHe: 'פנסיה' },
-  { id: '7', policyId: '7', clientName: 'משה ביטון', clientInitials: 'מב', type: 'one_time', typeHe: 'חד-פעמית', amount: 650, insuranceCompany: 'הפניקס', date: '15/02/2026', productTypeHe: 'ביטוח כללי' },
-  { id: '8', policyId: '8', clientName: 'רחל אברהם', clientInitials: 'רא', type: 'one_time', typeHe: 'חד-פעמית', amount: 756, insuranceCompany: 'מגדל', date: '01/03/2026', productTypeHe: 'ביטוח בריאות' },
-  { id: '9', policyId: '9', clientName: 'אברהם דוד', clientInitials: 'אד', type: 'one_time', typeHe: 'חד-פעמית', amount: 2590, insuranceCompany: 'כלל', date: '10/03/2026', productTypeHe: 'ביטוח מנהלים' },
-  { id: '10', policyId: '10', clientName: 'נועה פרידמן', clientInitials: 'נפ', type: 'one_time', typeHe: 'חד-פעמית', amount: 1248, insuranceCompany: 'הראל', date: '20/03/2026', productTypeHe: 'ביטוח חיים' },
+  { id: '1', policyId: '1', clientName: 'ישראל שראבי', clientInitials: 'יש', type: 'one_time', typeHe: 'חד-פעמית', amount: 1860, insuranceCompany: 'הראל', date: '14/01/2026', processingMonth: '2026-01', productTypeHe: 'ביטוח מנהלים' },
+  { id: '2', policyId: '2', clientName: 'מרים רפאלי', clientInitials: 'מר', type: 'one_time', typeHe: 'חד-פעמית', amount: 1230, insuranceCompany: 'מגדל', date: '12/01/2026', processingMonth: '2026-01', productTypeHe: 'פנסיה מקיפה' },
+  { id: '3', policyId: '3', clientName: 'דניאל גולדשטיין', clientInitials: 'דג', type: 'one_time', typeHe: 'חד-פעמית', amount: 525, insuranceCompany: 'הפניקס', date: '10/01/2026', processingMonth: '2026-01', productTypeHe: 'ביטוח בריאות' },
+  { id: '4', policyId: '4', clientName: 'אילנה לוי', clientInitials: 'אל', type: 'one_time', typeHe: 'חד-פעמית', amount: 2250, insuranceCompany: 'כלל', date: '09/01/2026', processingMonth: '2026-01', productTypeHe: 'קרן השתלמות' },
+  { id: '5', policyId: '5', clientName: 'יוסף חדד', clientInitials: 'יח', type: 'one_time', typeHe: 'חד-פעמית', amount: 1470, insuranceCompany: 'מנורה מבטחים', date: '07/01/2026', processingMonth: '2026-01', productTypeHe: 'ביטוח חיים' },
+  { id: '6', policyId: '6', clientName: 'שרה כהן', clientInitials: 'שכ', type: 'one_time', typeHe: 'חד-פעמית', amount: 1320, insuranceCompany: 'הראל', date: '05/02/2026', processingMonth: '2026-02', productTypeHe: 'פנסיה' },
+  { id: '7', policyId: '7', clientName: 'משה ביטון', clientInitials: 'מב', type: 'one_time', typeHe: 'חד-פעמית', amount: 650, insuranceCompany: 'הפניקס', date: '15/02/2026', processingMonth: '2026-02', productTypeHe: 'ביטוח כללי' },
+  { id: '8', policyId: '8', clientName: 'רחל אברהם', clientInitials: 'רא', type: 'one_time', typeHe: 'חד-פעמית', amount: 756, insuranceCompany: 'מגדל', date: '01/03/2026', processingMonth: '2026-03', productTypeHe: 'ביטוח בריאות' },
+  { id: '9', policyId: '9', clientName: 'אברהם דוד', clientInitials: 'אד', type: 'one_time', typeHe: 'חד-פעמית', amount: 2590, insuranceCompany: 'כלל', date: '10/03/2026', processingMonth: '2026-03', productTypeHe: 'ביטוח מנהלים' },
+  { id: '10', policyId: '10', clientName: 'נועה פרידמן', clientInitials: 'נפ', type: 'one_time', typeHe: 'חד-פעמית', amount: 1248, insuranceCompany: 'הראל', date: '20/03/2026', processingMonth: '2026-03', productTypeHe: 'ביטוח חיים' },
 ];
 
 const DEMO_POLICIES: PolicyRow[] = [
@@ -348,6 +368,15 @@ export const useDataStore = create<DataState>()(
       },
 
       addPolicy: (policy) => {
+        // Derive processingMonth from startDate (DD/MM/YYYY or YYYY-MM)
+        let processingMonth = '';
+        if (/^\d{4}-\d{2}$/.test(policy.startDate)) {
+          processingMonth = policy.startDate;
+        } else {
+          const parts = policy.startDate.match(/(\d{1,2})[/-](\d{1,2})[/-](\d{4})/);
+          if (parts) processingMonth = `${parts[3]}-${parts[2].padStart(2, '0')}`;
+        }
+
         const commission: CommissionRow = {
           id: crypto.randomUUID(),
           policyId: policy.id,
@@ -358,6 +387,7 @@ export const useDataStore = create<DataState>()(
           amount: policy.commissionAmount,
           insuranceCompany: policy.insuranceCompany,
           date: policy.startDate,
+          processingMonth,
           productTypeHe: policy.productTypeHe,
         };
 
@@ -372,17 +402,89 @@ export const useDataStore = create<DataState>()(
         });
       },
 
+      addCommission: (commission) => {
+        const newCommissions = [commission, ...get().commissions];
+        const derived = recalcDerived(get().policies, newCommissions);
+        set({ commissions: newCommissions, ...derived });
+      },
+
+      addCommissionsBatch: (batch) => {
+        const newCommissions = [...batch, ...get().commissions];
+        const derived = recalcDerived(get().policies, newCommissions);
+        set({ commissions: newCommissions, ...derived });
+      },
+
       addUpload: (upload) => set((state) => ({ uploads: [upload, ...state.uploads] })),
+
+      loadSalesFromDb: async () => {
+        set({ loading: true, error: null });
+        try {
+          const [salesRes, summaryRes] = await Promise.all([
+            api.getSalesTransactions(),
+            api.getSalesSummary(),
+          ]);
+
+          const salesData = salesRes.data || [];
+          const summaryData = summaryRes.data || [];
+
+          // Map DB sales_transactions to CommissionRow[]
+          const commissions: CommissionRow[] = salesData.map((s) => {
+            const clientName = s.insuredName || '';
+            return {
+              id: s.id,
+              policyId: s.policyNumber || '',
+              clientName,
+              clientInitials: clientName.trim().split(' ').map((w: string) => w[0] || '').join('').slice(0, 2),
+              type: s.reportType === 'hekef' || s.reportType === 'accumulation_hekef' ? 'one_time' : 'recurring',
+              typeHe: REPORT_TYPE_HE[s.reportType] || s.reportType,
+              amount: s.commissionAmount,
+              insuranceCompany: s.insuranceCompany,
+              date: s.processingMonth,
+              processingMonth: s.processingMonth,
+              productTypeHe: s.productName || s.branch || s.fundType || '',
+              clientIdNumber: s.insuredId || '',
+              branch: s.branch || '',
+              premiumAmount: s.premium ?? 0,
+            };
+          });
+
+          // Debug: log loaded months
+          const monthCounts: Record<string, number> = {};
+          commissions.forEach(c => { monthCounts[c.processingMonth] = (monthCounts[c.processingMonth] || 0) + 1; });
+          console.log('[loadSalesFromDb] Loaded from DB:', commissions.length, 'records, months:', monthCounts);
+
+          const derived = recalcDerived(get().policies, commissions);
+
+          // Update dashboard with summary totals
+          const totalFromSummary = summaryData.reduce((sum, m) => sum + m.totalCommission, 0);
+          const totalRecords = summaryData.reduce((sum, m) => sum + m.recordCount, 0);
+          if (totalFromSummary > 0) {
+            derived.dashboard = {
+              ...derived.dashboard,
+              currentSalary: Math.round(totalFromSummary),
+              newPolicies: totalRecords,
+            };
+          }
+
+          set({
+            commissions,
+            loading: false,
+            error: null,
+            ...derived,
+          });
+        } catch (err) {
+          const message = err instanceof Error ? err.message : 'שגיאה בטעינת נתונים מהשרת';
+          set({ loading: false, error: message });
+        }
+      },
     }),
     {
       name: 'payagent-data',
+      // Don't persist commissions — they are loaded from DB on mount
+      // Only persist uploads list for display purposes
       partialize: (state) => ({
         policies: state.policies,
-        commissions: state.commissions,
         uploads: state.uploads,
-        dashboard: state.dashboard,
-        carrierCommissions: state.carrierCommissions,
-        policyBreakdown: state.policyBreakdown,
         totalCommissions: state.totalCommissions,
         targetProgress: state.targetProgress,
         projectedTotal: state.projectedTotal,

@@ -12,6 +12,8 @@ export interface UserProfile {
   licenseNumber: string;
   role: string;
   taxStatus: 'self_employed' | 'employee';
+  onboardingCompleted: boolean;
+  agreementUploaded: boolean;
 }
 
 interface AuthState {
@@ -23,9 +25,11 @@ interface AuthState {
   error: string | null;
   loginDemo: () => void;
   loginWithApi: (email: string, password: string) => Promise<void>;
-  registerWithApi: (payload: { name: string; email: string; phone?: string; licenseNumber?: string }) => Promise<void>;
+  registerWithApi: (payload: { name: string; email: string; password: string; phone?: string; licenseNumber?: string }) => Promise<void>;
   logout: () => void;
   clearError: () => void;
+  completeOnboarding: () => void;
+  setAgreementUploaded: () => void;
 }
 
 const DEMO_PROFILE: UserProfile = {
@@ -36,6 +40,8 @@ const DEMO_PROFILE: UserProfile = {
   licenseNumber: '052-998432-1',
   role: 'סוכן פנסיוני בכיר',
   taxStatus: 'self_employed',
+  onboardingCompleted: true,
+  agreementUploaded: true,
 };
 
 export const useAuthStore = create<AuthState>()(
@@ -66,6 +72,11 @@ export const useAuthStore = create<AuthState>()(
 
           const { token, agent } = res.data;
           localStorage.setItem('payagent-token', token);
+          localStorage.removeItem('payagent-data');
+
+          // If server reports user has sales data, skip onboarding
+          const hasSalesData = (agent as Record<string, unknown>).hasSalesData === true;
+          const agreementFromServer = (agent as Record<string, unknown>).agreementUploaded === true;
 
           set({
             isAuthenticated: true,
@@ -75,10 +86,12 @@ export const useAuthStore = create<AuthState>()(
               id: agent.id,
               name: agent.name,
               email: agent.email,
-              phone: agent.phone,
-              licenseNumber: agent.licenseNumber,
+              phone: agent.phone || '',
+              licenseNumber: agent.licenseNumber || '',
               role: 'סוכן',
               taxStatus: (agent.taxStatus as 'self_employed' | 'employee') || 'self_employed',
+              onboardingCompleted: hasSalesData,
+              agreementUploaded: agreementFromServer || hasSalesData,
             },
             loading: false,
           });
@@ -99,6 +112,8 @@ export const useAuthStore = create<AuthState>()(
 
           const { token, agent } = res.data;
           localStorage.setItem('payagent-token', token);
+          // Clear any leftover data from previous sessions (demo or other user)
+          localStorage.removeItem('payagent-data');
 
           set({
             isAuthenticated: true,
@@ -112,6 +127,8 @@ export const useAuthStore = create<AuthState>()(
               licenseNumber: agent.licenseNumber,
               role: 'סוכן חדש',
               taxStatus: (agent.taxStatus as 'self_employed' | 'employee') || 'self_employed',
+              onboardingCompleted: false,
+              agreementUploaded: false,
             },
             loading: false,
           });
@@ -124,8 +141,21 @@ export const useAuthStore = create<AuthState>()(
         }
       },
 
+      completeOnboarding: () => {
+        set((state) => ({
+          profile: state.profile ? { ...state.profile, onboardingCompleted: true } : null,
+        }));
+      },
+
+      setAgreementUploaded: () => {
+        set((state) => ({
+          profile: state.profile ? { ...state.profile, agreementUploaded: true } : null,
+        }));
+      },
+
       logout: () => {
         localStorage.removeItem('payagent-token');
+        localStorage.removeItem('payagent-data');
         set({ isAuthenticated: false, userMode: null, profile: null, token: null, error: null });
       },
 
