@@ -14,6 +14,7 @@ import { idParamSchema } from '../validators/common.schemas.js';
 import { uploadListQuerySchema, type UploadListQuery } from '../validators/upload.schemas.js';
 import { parseExcelBuffer } from '../services/excel-parser.service.js';
 import { parseAgreementFile } from '../services/agreement-parser.service.js';
+import { parseMenoraZip, isMenoraZip, parseMenoraCsvBuffer, isMenoraCsvFileName } from '../services/menora-csv-parser.service.js';
 
 const upload = multer({ storage: multer.memoryStorage(), limits: { fileSize: 10 * 1024 * 1024 } });
 
@@ -165,9 +166,72 @@ uploadRouter.post('/parse', upload.single('file'), async (req, res, next) => {
     }
 
     const ext = file.originalname.toLowerCase();
-    if (!ext.endsWith('.xls') && !ext.endsWith('.xlsx')) {
-      res.status(400).json({ data: null, error: 'Only .xls and .xlsx files are supported', meta: null });
+    const isZip = ext.endsWith('.zip');
+    const isExcel = ext.endsWith('.xls') || ext.endsWith('.xlsx');
+    const isCsv = ext.endsWith('.csv');
+
+    if (!isExcel && !isZip && !isCsv) {
+      res.status(400).json({ data: null, error: 'Supported formats: XLS, XLSX, ZIP, CSV', meta: null });
       return;
+    }
+
+    // Handle CSV files (Menora format — Windows-1255 encoded)
+    if (isCsv) {
+      try {
+        const result = parseMenoraCsvBuffer(file.buffer, file.originalname);
+        const results = [result];
+        const totalRecords = result.records.length;
+        const totalErrors = result.errors.length;
+        res.json({
+          data: results,
+          error: null,
+          meta: {
+            fileName: file.originalname,
+            fileSize: file.size,
+            sheetsDetected: 1,
+            totalRecords,
+            totalErrors,
+            isAgreement: false,
+            detectedCompany: result.detectedCompany,
+          },
+        });
+        return;
+      } catch (err) {
+        const msg = err instanceof Error ? err.message : 'Failed to parse CSV file';
+        res.status(400).json({ data: null, error: msg, meta: null });
+        return;
+      }
+    }
+
+    // Handle ZIP files (Menora format)
+    if (isZip) {
+      try {
+        const results = parseMenoraZip(file.buffer, file.originalname);
+        if (results.length === 0) {
+          res.status(400).json({ data: null, error: 'ZIP file contains no parseable CSV files', meta: null });
+          return;
+        }
+        const totalRecords = results.reduce((sum, r) => sum + r.records.length, 0);
+        const totalErrors = results.reduce((sum, r) => sum + r.errors.length, 0);
+        res.json({
+          data: results,
+          error: null,
+          meta: {
+            fileName: file.originalname,
+            fileSize: file.size,
+            sheetsDetected: results.length,
+            totalRecords,
+            totalErrors,
+            isAgreement: false,
+            detectedCompany: 'מנורה מבטחים',
+          },
+        });
+        return;
+      } catch (err) {
+        const msg = err instanceof Error ? err.message : 'Failed to parse ZIP file';
+        res.status(400).json({ data: null, error: msg, meta: null });
+        return;
+      }
     }
 
     // Try commission reports first, fallback to agreement parser
@@ -233,6 +297,9 @@ uploadRouter.post('/parse', upload.single('file'), async (req, res, next) => {
     const totalRecords = results.reduce((sum, r) => sum + r.records.length, 0);
     const totalErrors = results.reduce((sum, r) => sum + r.errors.length, 0);
 
+    // Detect company from parse results
+    const detectedCompany = results.find((r) => r.detectedCompany)?.detectedCompany || null;
+
     res.json({
       data: results,
       error: null,
@@ -243,6 +310,7 @@ uploadRouter.post('/parse', upload.single('file'), async (req, res, next) => {
         totalRecords,
         totalErrors,
         isAgreement,
+        detectedCompany,
       },
     });
   } catch (err) {

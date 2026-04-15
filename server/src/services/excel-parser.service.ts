@@ -1,5 +1,7 @@
 import * as XLSX from 'xlsx';
 import { v4 as uuid } from 'uuid';
+import { isPhoenixFormat, parsePhoenixWorkbook } from './phoenix-parser.service.js';
+import { isAnalystFormat, parseAnalystWorkbook } from './analyst-parser.service.js';
 
 // ============ Types ============
 
@@ -485,6 +487,20 @@ function parseSheet(workbook: XLSX.WorkBook, sheetName: string, reportType: Exce
  */
 export function parseExcelBuffer(buffer: Buffer): ParseResult[] {
   const workbook = XLSX.read(buffer, { type: 'buffer', codepage: 65001 });
+
+  // 1. Check Analyst format (unique sheet name "עמלות")
+  if (isAnalystFormat(workbook)) {
+    const results = parseAnalystWorkbook(workbook);
+    if (results.length > 0) return results;
+  }
+
+  // 2. Check Phoenix format (same sheet name "דוח נפרעים" but different headers)
+  if (isPhoenixFormat(workbook)) {
+    const results = parsePhoenixWorkbook(workbook);
+    if (results.length > 0) return results;
+  }
+
+  // 3. Default: Harel format (original parser)
   const results: ParseResult[] = [];
 
   for (const sheetName of workbook.SheetNames) {

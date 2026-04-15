@@ -11,6 +11,7 @@
   },
   "dependencies": {
     "@types/multer": "^2.1.0",
+    "adm-zip": "^0.5.17",
     "bcrypt": "^6.0.0",
     "cors": "^2.8.5",
     "dotenv": "^17.4.1",
@@ -28,6 +29,7 @@
     "zod": "^3.24.3"
   },
   "devDependencies": {
+    "@types/adm-zip": "^0.5.8",
     "@types/bcrypt": "^6.0.0",
     "@types/cors": "^2.8.17",
     "@types/express": "^5.0.2",

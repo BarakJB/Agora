@@ -1,4 +1,4 @@
-import { useRef, useState } from 'react';
+import { useRef, useState, useMemo } from 'react';
 import Icon from '../components/ui/Icon';
 import { useDataStore, type UploadRow } from '../store/dataStore';
 
@@ -34,8 +34,8 @@ interface ParseResult {
 
 const REPORT_TYPE_LABELS: Record<string, string> = {
   nifraim: 'נפרעים — עמלות שוטפות על פרמיות',
-  hekef: 'היקף — עמלה חד-פעמית (ניוד/הצטרפות)',
-  accumulation_nifraim: 'נפרעים צבירה — גמל/השתלמות (ללא פנסיה)',
+  hekef: 'היקף / נפרעים — עמלות חד-פעמיות',
+  accumulation_nifraim: 'נפרעים צבירה — גמל/השתלמות',
   accumulation_hekef: 'היקף צבירה — תגמול על ניוד גמל/השתלמות',
   branch_distribution: 'התפלגות ענפים — סיכום לפי ענף',
   agent_data: 'רשימת נתונים לסוכן — מוצרי צבירה',
@@ -45,6 +45,22 @@ const REPORT_TYPE_LABELS: Record<string, string> = {
 export default function CommissionUploadPage() {
   const uploads = useDataStore((s) => s.uploads);
   const addUpload = useDataStore((s) => s.addUpload);
+  const policies = useDataStore((s) => s.policies);
+
+  const contractRates = useMemo(() => {
+    const map = new Map<string, { hekef: number[]; nifraim: number[] }>();
+    for (const p of policies) {
+      if (!map.has(p.productTypeHe)) map.set(p.productTypeHe, { hekef: [], nifraim: [] });
+      const entry = map.get(p.productTypeHe)!;
+      if (p.commissionPct > 0) entry.hekef.push(p.commissionPct);
+      if (p.recurringPct > 0) entry.nifraim.push(p.recurringPct);
+    }
+    return Array.from(map.entries()).map(([type, { hekef, nifraim }]) => ({
+      type,
+      hekef: hekef.length ? Math.max(...hekef) : null,
+      nifraim: nifraim.length ? Math.max(...nifraim) : null,
+    }));
+  }, [policies]);
 
   const [isDragging, setIsDragging] = useState(false);
   const [selectedCompany, setSelectedCompany] = useState('');
@@ -82,9 +98,10 @@ export default function CommissionUploadPage() {
     const ext = file.name.toLowerCase();
     const isExcel = ext.endsWith('.xls') || ext.endsWith('.xlsx');
     const isCsv = ext.endsWith('.csv');
+    const isZip = ext.endsWith('.zip');
 
-    if (!isExcel && !isCsv) {
-      setParseError('יש להעלות קובץ מסוג XLS, XLSX, או CSV בלבד');
+    if (!isExcel && !isCsv && !isZip) {
+      setParseError('יש להעלות קובץ מסוג XLS, XLSX, ZIP, או CSV בלבד');
       return;
     }
 
@@ -99,7 +116,7 @@ export default function CommissionUploadPage() {
     setCompanyRequired(false);
     setPendingFile(null);
 
-    if (isExcel) {
+    if (isExcel || isZip || isCsv) {
       await parseExcelFile(file);
     } else {
       const upload: UploadRow = {
@@ -149,11 +166,18 @@ export default function CommissionUploadPage() {
       setParseResults(results);
 
       const totalRecords = results.reduce((s: number, r: ParseResult) => s + r.records.length, 0);
+      const detectedCompany = json.meta?.detectedCompany as string | null;
+      const company = selectedCompany || detectedCompany || 'זוהה אוטומטית';
+
+      // Auto-set company if detected and not already selected
+      if (detectedCompany && !selectedCompany) {
+        setSelectedCompany(detectedCompany);
+      }
 
       addUpload({
         id: crypto.randomUUID(),
         fileName: file.name,
-        company: selectedCompany || 'זוהה אוטומטית',
+        company,
         date: new Date().toLocaleDateString('he-IL'),
         records: totalRecords,
         status: totalRecords > 0 ? 'completed' : 'error',
@@ -250,6 +274,7 @@ export default function CommissionUploadPage() {
                       <option value="אלטשולר שחם">אלטשולר שחם</option>
                       <option value="מיטב דש">מיטב דש</option>
                       <option value="פסגות">פסגות</option>
+                      <option value="אנליסט">אנליסט</option>
                     </select>
                     <Icon name="expand_more" className="absolute left-4 top-1/2 -translate-y-1/2 pointer-events-none text-primary" />
                   </div>
@@ -303,7 +328,7 @@ export default function CommissionUploadPage() {
               <input
                 ref={fileInputRef}
                 type="file"
-                accept=".csv,.xls,.xlsx"
+                accept=".csv,.xls,.xlsx,.zip"
                 className="hidden"
                 onChange={handleFileSelect}
               />
@@ -333,12 +358,13 @@ export default function CommissionUploadPage() {
                     </div>
                     <h3 className="text-xl font-bold text-primary">גרור ושחרר קבצים כאן</h3>
                     <p className="text-on-surface-variant max-w-sm">
-                      תמיכה בקבצי <strong>XLS, XLSX</strong> (דוחות חברות ביטוח) ו-<strong>CSV</strong>.
-                      המערכת מזהה אוטומטית את סוג הדוח.
+                      תמיכה בקבצי <strong>XLS, XLSX</strong> (הראל, הפניקס, אנליסט), <strong>ZIP</strong> (מנורה) ו-<strong>CSV</strong>.
+                      המערכת מזהה אוטומטית את חברת הביטוח וסוג הדוח.
                     </p>
                     <div className="flex gap-3 mt-4">
                       <span className="bg-primary-fixed text-primary text-xs font-bold px-3 py-1 rounded-full">.xls</span>
                       <span className="bg-primary-fixed text-primary text-xs font-bold px-3 py-1 rounded-full">.xlsx</span>
+                      <span className="bg-primary-fixed text-primary text-xs font-bold px-3 py-1 rounded-full">.zip</span>
                       <span className="bg-surface-container-high text-on-surface-variant text-xs font-bold px-3 py-1 rounded-full">.csv</span>
                     </div>
                     <button
@@ -437,6 +463,15 @@ export default function CommissionUploadPage() {
                                 <th className="px-4 py-3">ללא מע"מ</th>
                               </>
                             )}
+                            {(result.reportType === 'hekef' || result.reportType === 'accumulation_nifraim' || result.reportType === 'accumulation_hekef') && (
+                              <>
+                                <th className="px-4 py-3">שם מבוטח</th>
+                                <th className="px-4 py-3">ענף / מוצר</th>
+                                <th className="px-4 py-3">מס' פוליסה</th>
+                                <th className="px-4 py-3">פרמיה</th>
+                                <th className="px-4 py-3">עמלה</th>
+                              </>
+                            )}
                           </tr>
                         </thead>
                         <tbody>
@@ -477,6 +512,15 @@ export default function CommissionUploadPage() {
                                   <td className="px-4 py-3">{fmt(rec.premium)}</td>
                                   <td className="px-4 py-3 font-bold text-secondary">{fmt(rec.amountWithVat)}</td>
                                   <td className="px-4 py-3">{fmt(rec.amountBeforeVat)}</td>
+                                </>
+                              )}
+                              {(result.reportType === 'hekef' || result.reportType === 'accumulation_nifraim' || result.reportType === 'accumulation_hekef') && (
+                                <>
+                                  <td className="px-4 py-3 font-medium">{rec.insuredName}</td>
+                                  <td className="px-4 py-3">{rec.branch || rec.productName || rec.fundType}</td>
+                                  <td className="px-4 py-3 font-mono text-xs">{rec.policyNumber}</td>
+                                  <td className="px-4 py-3">{rec.premium ? fmt(rec.premium) : rec.accumulationBalance ? fmt(rec.accumulationBalance) : '—'}</td>
+                                  <td className="px-4 py-3 font-bold text-secondary">{fmt(rec.commission)}</td>
                                 </>
                               )}
                             </tr>
@@ -588,6 +632,45 @@ export default function CommissionUploadPage() {
               אין צורך לבחור סוג ידנית — פשוט העלה את הקובץ כפי שקיבלת אותו מחברת הביטוח.
             </p>
           </div>
+
+          {/* Contract Rates Panel */}
+          {contractRates.length > 0 && (
+            <div className="bg-surface-container-lowest p-6 rounded-lg border-s-4 border-primary">
+              <div className="flex items-center gap-2 mb-4">
+                <Icon name="contract" className="text-primary" size="sm" />
+                <h4 className="text-xs font-black uppercase tracking-widest text-on-surface-variant">אחוזי עמלה — החוזה שלי</h4>
+              </div>
+              <div className="overflow-x-auto">
+                <table className="w-full text-right text-xs">
+                  <thead>
+                    <tr className="text-on-surface-variant border-b border-outline-variant">
+                      <th className="pb-2 font-bold">מוצר</th>
+                      <th className="pb-2 font-bold text-center">היקף %</th>
+                      <th className="pb-2 font-bold text-center">נפרעים %</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-outline-variant/30">
+                    {contractRates.map((row) => (
+                      <tr key={row.type} className="hover:bg-surface-container-low transition-colors">
+                        <td className="py-2.5 font-medium text-on-surface">{row.type}</td>
+                        <td className="py-2.5 text-center">
+                          {row.hekef != null
+                            ? <span className="font-bold text-primary">{row.hekef}%</span>
+                            : <span className="text-on-surface-variant/40">—</span>}
+                        </td>
+                        <td className="py-2.5 text-center">
+                          {row.nifraim != null
+                            ? <span className="font-bold text-secondary">{row.nifraim}%</span>
+                            : <span className="text-on-surface-variant/40">—</span>}
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+              <p className="text-[10px] text-on-surface-variant/50 mt-3">מבוסס על הפוליסות הפעילות בתיק</p>
+            </div>
+          )}
 
           <div className="bg-surface-container-lowest p-8 rounded-lg border-s-4 border-secondary">
             <h4 className="text-xs font-black uppercase tracking-widest text-on-surface-variant mb-6">סיכום חודשי</h4>

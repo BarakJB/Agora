@@ -150,9 +150,17 @@ export default function PolicyTrackerPage() {
                       </div>
                       <div>
                         <p className="font-bold text-base">{client.insuredName}</p>
-                        <p className="text-xs text-on-surface-variant mt-0.5">
-                          ת.ז {client.insuredId}
-                        </p>
+                        <div className="flex items-center gap-2 mt-0.5">
+                          <span className="text-xs text-on-surface-variant font-mono">ת.ז {client.insuredId}</span>
+                          {client.insuranceCompanies.map((co) => (
+                            <span
+                              key={co}
+                              className="text-[10px] bg-primary-fixed text-primary px-2 py-0.5 rounded-full font-bold"
+                            >
+                              {co}
+                            </span>
+                          ))}
+                        </div>
                       </div>
                     </div>
                     <div className="flex items-center gap-6">
@@ -187,17 +195,9 @@ export default function PolicyTrackerPage() {
                         {(client.products || []).map((p) => (
                           <span
                             key={p}
-                            className="text-[10px] bg-primary-fixed text-primary px-2 py-0.5 rounded-full font-medium"
+                            className="text-[10px] bg-surface-container-low px-2 py-0.5 rounded-full text-on-surface-variant font-medium"
                           >
                             {p}
-                          </span>
-                        ))}
-                        {client.insuranceCompanies.map((co) => (
-                          <span
-                            key={co}
-                            className="text-[10px] bg-surface-container-low px-2 py-0.5 rounded-full text-on-surface-variant"
-                          >
-                            {co}
                           </span>
                         ))}
                       </div>
@@ -248,11 +248,24 @@ export default function PolicyTrackerPage() {
                                 </div>
                                 {/* Rows */}
                                 <table className="w-full text-sm">
+                                  <thead>
+                                    <tr className="text-[10px] uppercase tracking-widest text-on-surface-variant/50 font-bold border-b border-outline-variant/30">
+                                      <th className="px-6 py-2 text-right font-bold">ענף</th>
+                                      <th className="py-2 text-right font-bold">מוצר</th>
+                                      <th className="py-2 text-right font-bold">מס׳ פוליסה</th>
+                                      <th className="py-2 text-right font-bold">פרמיה</th>
+                                      <th className="py-2 text-right font-bold">עמלה</th>
+                                      <th className="py-2 text-right font-bold">חברה</th>
+                                    </tr>
+                                  </thead>
                                   <tbody>
                                     {rows.map((tx) => (
                                       <tr key={tx.id} className="hover:bg-surface-container-lowest transition-colors">
                                         <td className="px-6 py-2.5 text-on-surface-variant w-24">{tx.branch ?? '—'}</td>
                                         <td className="py-2.5 text-on-surface-variant">{tx.productName ?? '—'}</td>
+                                        <td className="py-2.5 text-on-surface-variant/60 font-mono text-xs w-28">
+                                          {tx.policyNumber ?? '—'}
+                                        </td>
                                         <td className="py-2.5 text-on-surface-variant w-24">{tx.premium != null ? `${fmt(tx.premium)}₪` : '—'}</td>
                                         <td className="py-2.5 font-bold text-end w-28">
                                           <span className={tx.commissionAmount < 0 ? 'text-error' : 'text-secondary'}>{fmt(tx.commissionAmount)}₪</span>

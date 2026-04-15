@@ -18,7 +18,7 @@ export const salesRouter = Router();
  */
 salesRouter.post('/', async (req, res, next) => {
   try {
-    const agentId = res.locals.agentId as string;
+    const agentId = (res.locals.sub || res.locals.agentId) as string;
     const { records, insuranceCompany } = req.body as {
       records: SalesTransactionInput[];
       insuranceCompany: string;
@@ -75,7 +75,7 @@ salesRouter.post('/', async (req, res, next) => {
  */
 salesRouter.get('/', async (req, res, next) => {
   try {
-    const agentId = res.locals.agentId as string;
+    const agentId = (res.locals.sub || res.locals.agentId) as string;
     const month = req.query.month as string | undefined;
 
     const transactions = await getSalesTransactions(agentId, month);
@@ -97,7 +97,7 @@ salesRouter.get('/', async (req, res, next) => {
  */
 salesRouter.get('/summary', async (req, res, next) => {
   try {
-    const agentId = res.locals.agentId as string;
+    const agentId = (res.locals.sub || res.locals.agentId) as string;
     const summary = await getMonthlySalarySummary(agentId);
 
     res.json({
@@ -117,7 +117,7 @@ salesRouter.get('/summary', async (req, res, next) => {
  */
 salesRouter.get('/portfolio', async (req, res, next) => {
   try {
-    const agentId = res.locals.agentId as string;
+    const agentId = (res.locals.sub || res.locals.agentId) as string;
     const analysis = await getPortfolioAnalysis(agentId);
 
     res.json({
@@ -137,7 +137,7 @@ salesRouter.get('/portfolio', async (req, res, next) => {
  */
 salesRouter.get('/clients', async (req, res, next) => {
   try {
-    const agentId = res.locals.agentId as string;
+    const agentId = (res.locals.sub || res.locals.agentId) as string;
     const search = req.query.search as string | undefined;
 
     const clients = await searchClients(agentId, search);
@@ -159,7 +159,7 @@ salesRouter.get('/clients', async (req, res, next) => {
  */
 salesRouter.get('/client/:clientId', async (req, res, next) => {
   try {
-    const agentId = res.locals.agentId as string;
+    const agentId = (res.locals.sub || res.locals.agentId) as string;
     const clientId = req.params.clientId;
 
     const transactions = await getClientTransactions(agentId, clientId);

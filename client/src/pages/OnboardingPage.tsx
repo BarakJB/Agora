@@ -24,6 +24,7 @@ const INSURANCE_COMPANIES = [
   { id: 'altshuler', name: 'אלטשולר שחם', initials: 'אש' },
   { id: 'meitav', name: 'מיטב דש', initials: 'מד' },
   { id: 'psagot', name: 'פסגות', initials: 'פס' },
+  { id: 'analyst', name: 'אנליסט', initials: 'אנ' },
 ] as const;
 
 interface UploadStatus {
@@ -49,7 +50,7 @@ export default function OnboardingPage() {
   // Step 2 — Agent profile
   const [licenseNumber, setLicenseNumber] = useState(profile?.licenseNumber || '');
   const [taxId, setTaxId] = useState('');
-  const [taxStatus, setTaxStatus] = useState<'self_employed' | 'employee'>(profile?.taxStatus || 'self_employed');
+  const taxStatus = 'self_employed' as const;
   const [phone, setPhone] = useState(profile?.phone || '');
   const [step2Errors, setStep2Errors] = useState<Record<string, string>>({});
 
@@ -338,7 +339,6 @@ export default function OnboardingPage() {
                   taxId={taxId}
                   setTaxId={setTaxId}
                   taxStatus={taxStatus}
-                  setTaxStatus={setTaxStatus}
                   phone={phone}
                   setPhone={setPhone}
                   errors={step2Errors}
@@ -467,7 +467,6 @@ interface StepAgentProfileProps {
   taxId: string;
   setTaxId: (v: string) => void;
   taxStatus: 'self_employed' | 'employee';
-  setTaxStatus: (v: 'self_employed' | 'employee') => void;
   phone: string;
   setPhone: (v: string) => void;
   errors: Record<string, string>;
@@ -478,7 +477,6 @@ interface StepAgentProfileProps {
 function StepAgentProfile({
   licenseNumber, setLicenseNumber,
   taxId, setTaxId,
-  taxStatus, setTaxStatus,
   phone, setPhone,
   errors,
   onNext, onBack,
@@ -529,38 +527,6 @@ function StepAgentProfile({
           {errors.taxId && <p className="text-error text-xs mt-1">{errors.taxId}</p>}
         </div>
 
-        {/* Tax Status */}
-        <div>
-          <label className="text-xs font-label font-semibold uppercase tracking-wider text-on-surface-variant block mb-2">
-            סטטוס מס
-          </label>
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-            <button
-              type="button"
-              onClick={() => setTaxStatus('self_employed')}
-              className={`text-right rounded-lg p-4 transition-all ${
-                taxStatus === 'self_employed'
-                  ? 'bg-primary-fixed/30 ring-2 ring-primary'
-                  : 'bg-surface-container-low hover:bg-surface-container'
-              }`}
-            >
-              <span className="font-bold text-on-surface block">עצמאי / עוסק מורשה</span>
-              <span className="text-xs text-on-surface-variant">מע"מ, ביטוח לאומי, מס הכנסה</span>
-            </button>
-            <button
-              type="button"
-              onClick={() => setTaxStatus('employee')}
-              className={`text-right rounded-lg p-4 transition-all ${
-                taxStatus === 'employee'
-                  ? 'bg-primary-fixed/30 ring-2 ring-primary'
-                  : 'bg-surface-container-low hover:bg-surface-container'
-              }`}
-            >
-              <span className="font-bold text-on-surface block">שכיר</span>
-              <span className="text-xs text-on-surface-variant">ניכוי במקור לפי תלוש שכר</span>
-            </button>
-          </div>
-        </div>
 
         {/* Phone */}
         <div>

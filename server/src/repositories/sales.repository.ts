@@ -1,6 +1,11 @@
 import type { RowDataPacket, ResultSetHeader } from 'mysql2';
 import pool from '../config/database.js';
 
+// Only these report types represent individual policy-level records.
+// branch_distribution / agent_data / product_distribution are aggregate summaries
+// of the same data — including them causes double-counting.
+const POLICY_REPORT_TYPES = `('nifraim','hekef','accumulation_nifraim','accumulation_hekef')`;
+
 export interface SalesTransactionInput {
   reportType: string;
   processingMonth: string;
@@ -257,7 +262,7 @@ export async function searchClients(
   limit = 50,
 ): Promise<ClientSummaryRow[]> {
   // Calculate per-client: latest month commission, monthly average, and total
-  // Each policy (by policy_number or by row) counted once per month
+  // Only policy-level report types to avoid double-counting aggregates
   let sql = `
     SELECT insured_name,
            MAX(insured_id) AS insured_id,
@@ -269,6 +274,7 @@ export async function searchClients(
            GROUP_CONCAT(DISTINCT CONCAT(branch, '/', COALESCE(product_name,''))) AS products
     FROM sales_transactions
     WHERE agent_id = ?
+      AND report_type IN ${POLICY_REPORT_TYPES}
       AND insured_name IS NOT NULL
       AND insured_name != ''`;
   const params: unknown[] = [agentId];
@@ -394,14 +400,14 @@ export interface PortfolioAnalysis {
 }
 
 export async function getPortfolioAnalysis(agentId: string): Promise<PortfolioAnalysis> {
-  // 1. Overview — total commission from ALL records (including branch_distribution without names)
+  // 1. Overview — only policy-level report types to avoid double-counting aggregates
   const [overviewRows] = await pool.query<RowDataPacket[]>(
     `SELECT
-       (SELECT COUNT(DISTINCT insured_name) FROM sales_transactions WHERE agent_id = ? AND insured_name IS NOT NULL AND insured_name != '') AS total_clients,
+       (SELECT COUNT(DISTINCT insured_name) FROM sales_transactions WHERE agent_id = ? AND report_type IN ${POLICY_REPORT_TYPES} AND insured_name IS NOT NULL AND insured_name != '') AS total_clients,
        ROUND(SUM(commission_amount), 2) AS total_commission,
        COUNT(DISTINCT processing_month) AS months_tracked
      FROM sales_transactions
-     WHERE agent_id = ?`,
+     WHERE agent_id = ? AND report_type IN ${POLICY_REPORT_TYPES}`,
     [agentId, agentId],
   );
 
@@ -418,6 +424,7 @@ export async function getPortfolioAnalysis(agentId: string): Promise<PortfolioAn
             COUNT(DISTINCT insured_name) AS clients
      FROM sales_transactions
      WHERE agent_id = ?
+       AND report_type IN ${POLICY_REPORT_TYPES}
        AND insured_name IS NOT NULL AND insured_name != ''
      GROUP BY COALESCE(branch, 'אחר')
      ORDER BY total DESC`,
@@ -440,6 +447,7 @@ export async function getPortfolioAnalysis(agentId: string): Promise<PortfolioAn
             GROUP_CONCAT(DISTINCT branch) AS branches
      FROM sales_transactions
      WHERE agent_id = ?
+       AND report_type IN ${POLICY_REPORT_TYPES}
        AND insured_name IS NOT NULL AND insured_name != ''
      GROUP BY insured_name
      ORDER BY total DESC
@@ -454,6 +462,7 @@ export async function getPortfolioAnalysis(agentId: string): Promise<PortfolioAn
             ROUND(SUM(commission_amount), 2) AS month_total
      FROM sales_transactions
      WHERE agent_id = ?
+       AND report_type IN ${POLICY_REPORT_TYPES}
        AND insured_name IS NOT NULL AND insured_name != ''
      GROUP BY insured_name, processing_month
      ORDER BY insured_name, processing_month DESC`,
@@ -489,13 +498,13 @@ export async function getPortfolioAnalysis(agentId: string): Promise<PortfolioAn
     };
   });
 
-  // 4. Monthly trend — ALL records (including branch_distribution without names)
+  // 4. Monthly trend — policy-level records only
   const [monthlyRows] = await pool.query<RowDataPacket[]>(
     `SELECT processing_month AS month,
             ROUND(SUM(commission_amount), 2) AS total,
             COUNT(DISTINCT CASE WHEN insured_name IS NOT NULL AND insured_name != '' THEN insured_name END) AS clients
      FROM sales_transactions
-     WHERE agent_id = ?
+     WHERE agent_id = ? AND report_type IN ${POLICY_REPORT_TYPES}
      GROUP BY processing_month
      ORDER BY processing_month ASC`,
     [agentId],
@@ -514,6 +523,7 @@ export async function getPortfolioAnalysis(agentId: string): Promise<PortfolioAn
     `SELECT ROUND(SUM(commission_amount), 2) AS total
      FROM sales_transactions
      WHERE agent_id = ?
+       AND report_type IN ${POLICY_REPORT_TYPES}
        AND insured_name IS NOT NULL AND insured_name != ''
      GROUP BY insured_name
      ORDER BY total DESC`,
@@ -561,7 +571,7 @@ export async function getPortfolioAnalysis(agentId: string): Promise<PortfolioAn
     const [idRows] = await pool.query<RowDataPacket[]>(
       `SELECT insured_name, MAX(insured_id) AS insured_id
        FROM sales_transactions
-       WHERE agent_id = ? AND insured_name IN (${namesForId.map(() => '?').join(',')})
+       WHERE agent_id = ? AND report_type IN ${POLICY_REPORT_TYPES} AND insured_name IN (${namesForId.map(() => '?').join(',')})
        GROUP BY insured_name`,
       [agentId, ...namesForId],
     );
@@ -587,6 +597,7 @@ export async function getPortfolioAnalysis(agentId: string): Promise<PortfolioAn
               ROUND(SUM(commission_amount), 2) AS total
        FROM sales_transactions
        WHERE agent_id = ?
+         AND report_type IN ${POLICY_REPORT_TYPES}
          AND insured_name IS NOT NULL AND insured_name != ''
        GROUP BY insured_name
        HAVING MIN(processing_month) = ?

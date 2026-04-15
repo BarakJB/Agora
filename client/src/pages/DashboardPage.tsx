@@ -265,10 +265,19 @@ export default function DashboardPage() {
     return important.filter(t => !uploadedTypes.has(t));
   }, [uploadedTypes]);
 
-  // Breakdown as array for rendering
+  // Breakdown as array for salary detail — grouped by type + company
   const breakdownList = useMemo(() => {
-    return Object.entries(breakdown).map(([type, data]) => ({ type, ...data })).sort((a, b) => b.total - a.total);
-  }, [breakdown]);
+    const map: Record<string, { count: number; total: number }> = {};
+    filtered.forEach(c => {
+      const typeName = c.typeHe || 'אחר';
+      const company = c.insuranceCompany || '';
+      const key = company ? `${typeName} — ${company}` : typeName;
+      if (!map[key]) map[key] = { count: 0, total: 0 };
+      map[key].count++;
+      map[key].total += c.amount;
+    });
+    return Object.entries(map).map(([type, data]) => ({ type, ...data })).sort((a, b) => b.total - a.total);
+  }, [filtered]);
 
   // ─── Anomaly Detection ───
   interface AnomalyClient {

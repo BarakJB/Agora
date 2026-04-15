@@ -1,4 +1,4 @@
-import { useState, useMemo, useEffect, useRef, useCallback } from 'react';
+import { useState, useMemo, useEffect, useRef, useCallback, Fragment } from 'react';
 import Icon from '../components/ui/Icon';
 import { useAuthStore } from '../store/authStore';
 import * as api from '../services/api';
@@ -29,7 +29,7 @@ const REPORT_TYPE_HE: Record<string, string> = {
 
 const COMPANIES = [
   'הראל', 'מגדל', 'מנורה מבטחים', 'הפניקס', 'כלל ביטוח',
-  'הכשרה', 'אלטשולר שחם', 'מיטב דש', 'פסגות',
+  'הכשרה', 'אלטשולר שחם', 'מיטב דש', 'פסגות', 'אנליסט',
 ];
 
 /* ─── Main Component ─── */
@@ -103,16 +103,84 @@ export default function MonthlySalesPage() {
   const recordCount = filtered.length;
   const avgPerPolicy = recordCount > 0 ? totalCommission / recordCount : 0;
 
+  // Detailed salary composition: company → reportType → branch with amounts
+  const salaryComposition = useMemo(() => {
+    const companyMap: Record<string, {
+      total: number;
+      count: number;
+      byType: Record<string, {
+        total: number;
+        count: number;
+        byBranch: Record<string, { total: number; count: number; premium: number }>;
+      }>;
+    }> = {};
+
+    for (const t of filtered) {
+      const company = t.insuranceCompany || 'לא צוין';
+      if (!companyMap[company]) companyMap[company] = { total: 0, count: 0, byType: {} };
+      companyMap[company].total += t.commissionAmount;
+      companyMap[company].count++;
+
+      const typeKey = REPORT_TYPE_HE[t.reportType] || t.reportType;
+      if (!companyMap[company].byType[typeKey]) companyMap[company].byType[typeKey] = { total: 0, count: 0, byBranch: {} };
+      companyMap[company].byType[typeKey].total += t.commissionAmount;
+      companyMap[company].byType[typeKey].count++;
+
+      const branch = t.branch || t.productName || 'אחר';
+      if (!companyMap[company].byType[typeKey].byBranch[branch]) companyMap[company].byType[typeKey].byBranch[branch] = { total: 0, count: 0, premium: 0 };
+      companyMap[company].byType[typeKey].byBranch[branch].total += t.commissionAmount;
+      companyMap[company].byType[typeKey].byBranch[branch].count++;
+      companyMap[company].byType[typeKey].byBranch[branch].premium += t.premium ?? 0;
+    }
+
+    return Object.entries(companyMap)
+      .map(([name, data]) => ({
+        name,
+        total: data.total,
+        count: data.count,
+        pct: totalCommission > 0 ? (data.total / totalCommission) * 100 : 0,
+        byType: Object.entries(data.byType)
+          .map(([type, td]) => ({
+            type,
+            total: td.total,
+            count: td.count,
+            byBranch: Object.entries(td.byBranch)
+              .map(([branch, bd]) => ({ branch, ...bd }))
+              .sort((a, b) => b.total - a.total),
+          }))
+          .sort((a, b) => b.total - a.total),
+      }))
+      .sort((a, b) => b.total - a.total);
+  }, [filtered, totalCommission]);
+
+  // Company trend across months (for insights)
+  const companyTrend = useMemo(() => {
+    const months = [...new Set(transactions.map((t) => t.processingMonth))].sort();
+    const companies = [...new Set(transactions.map((t) => t.insuranceCompany))].filter(Boolean);
+    const trend: Record<string, Record<string, number>> = {};
+    for (const company of companies) {
+      trend[company] = {};
+      for (const month of months) {
+        trend[company][month] = transactions
+          .filter((t) => t.insuranceCompany === company && t.processingMonth === month)
+          .reduce((s, t) => s + t.commissionAmount, 0);
+      }
+    }
+    return { months, companies, trend };
+  }, [transactions]);
+
   // Compare month data
   const compareFiltered = useMemo(() =>
     compareMonth ? transactions.filter((t) => t.processingMonth === compareMonth) : [],
   [transactions, compareMonth]);
 
-  // Breakdown by report type for comparison
+  // Breakdown by report type + company (e.g. "נפרעים הראל", "היקף הפניקס")
   const breakdownByType = useCallback((records: api.SalesTransaction[]) => {
     const map: Record<string, { count: number; total: number; premium: number }> = {};
     for (const r of records) {
-      const key = REPORT_TYPE_HE[r.reportType] || r.reportType;
+      const typeName = REPORT_TYPE_HE[r.reportType] || r.reportType;
+      const company = r.insuranceCompany || '';
+      const key = company ? `${typeName} — ${company}` : typeName;
       if (!map[key]) map[key] = { count: 0, total: 0, premium: 0 };
       map[key].count++;
       map[key].total += r.commissionAmount;
@@ -213,6 +281,155 @@ export default function MonthlySalesPage() {
           </div>
         </div>
 
+        {/* Salary Composition — הרכב שכר מפורט */}
+        {salaryComposition.length > 0 && (
+          <section className="space-y-4">
+            <h3 className="text-lg font-bold text-on-surface px-2 flex items-center gap-2">
+              <Icon name="account_balance_wallet" className="text-primary" />
+              הרכב שכר — מאיפה מגיע כל שקל — {selectedMonth ? formatMonth(selectedMonth) : ''}
+            </h3>
+
+            {/* Per-company detailed breakdown */}
+            <div className="bg-surface-container-lowest rounded-lg overflow-hidden">
+              <table className="w-full text-right text-sm">
+                <caption className="sr-only">הרכב שכר לפי חברה</caption>
+                <thead>
+                  <tr className="bg-surface-container text-[10px] uppercase tracking-widest text-on-surface-variant font-headline">
+                    <th className="px-4 py-3">חברה / סוג / ענף</th>
+                    <th className="px-4 py-3 w-20">רשומות</th>
+                    <th className="px-4 py-3 w-28">פרמיה</th>
+                    <th className="px-4 py-3 w-28">עמלה</th>
+                    <th className="px-4 py-3 w-16">%</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {salaryComposition.map((company, ci) => {
+                    const prevMonthIdx = companyTrend.months.indexOf(selectedMonth) - 1;
+                    const prevMonth = prevMonthIdx >= 0 ? companyTrend.months[prevMonthIdx] : null;
+                    const prevAmount = prevMonth && companyTrend.trend[company.name] ? companyTrend.trend[company.name][prevMonth] || 0 : 0;
+                    const trendDiff = prevAmount > 0 ? ((company.total - prevAmount) / prevAmount) * 100 : 0;
+                    const hasTrend = prevAmount > 0;
+                    const companyColors = ['border-primary', 'border-secondary', 'border-error', 'border-tertiary-container', 'border-on-surface-variant'];
+
+                    return (
+                      <Fragment key={company.name}>
+                        {/* Company header row */}
+                        <tr className={`bg-surface-container-low border-s-4 ${companyColors[ci % companyColors.length]}`}>
+                          <td className="px-4 py-3">
+                            <div className="flex items-center gap-2">
+                              <Icon name="business" size="sm" className="text-primary" />
+                              <span className="font-bold text-on-surface text-base">{company.name}</span>
+                              {hasTrend && (
+                                <span className={`text-[10px] font-bold ${trendDiff >= 0 ? 'text-secondary' : 'text-error'}`}>
+                                  {trendDiff >= 0 ? '▲' : '▼'} {Math.abs(trendDiff).toFixed(1)}%
+                                </span>
+                              )}
+                            </div>
+                          </td>
+                          <td className="px-4 py-3 font-medium text-on-surface-variant">{company.count}</td>
+                          <td className="px-4 py-3" />
+                          <td className="px-4 py-3 font-bold text-primary text-base">{fmt(company.total)} &#8362;</td>
+                          <td className="px-4 py-3">
+                            <span className="bg-primary-fixed text-primary px-2 py-0.5 rounded-full text-xs font-bold">
+                              {company.pct.toFixed(1)}%
+                            </span>
+                          </td>
+                        </tr>
+
+                        {/* Report type rows */}
+                        {company.byType.map((typeData) => (
+                          <Fragment key={`${company.name}-${typeData.type}`}>
+                            <tr className="bg-surface-container-lowest/50 border-b border-outline-variant/10">
+                              <td className="px-4 py-2 ps-10">
+                                <span className="bg-primary-fixed/60 text-primary px-2 py-0.5 rounded text-xs font-bold">
+                                  {typeData.type}
+                                </span>
+                              </td>
+                              <td className="px-4 py-2 text-on-surface-variant text-xs">{typeData.count}</td>
+                              <td className="px-4 py-2" />
+                              <td className="px-4 py-2 font-semibold text-on-surface">{fmt(typeData.total)} &#8362;</td>
+                              <td className="px-4 py-2 text-xs text-on-surface-variant">
+                                {totalCommission > 0 ? (typeData.total / totalCommission * 100).toFixed(1) : 0}%
+                              </td>
+                            </tr>
+
+                            {/* Branch detail rows */}
+                            {typeData.byBranch.map((branchData) => (
+                              <tr key={`${company.name}-${typeData.type}-${branchData.branch}`} className="hover:bg-surface-container-low transition-colors border-b border-outline-variant/5">
+                                <td className="px-4 py-1.5 ps-16 text-xs text-on-surface-variant">{branchData.branch}</td>
+                                <td className="px-4 py-1.5 text-xs text-on-surface-variant">{branchData.count}</td>
+                                <td className="px-4 py-1.5 text-xs text-on-surface-variant">
+                                  {branchData.premium > 0 ? fmt(branchData.premium) : '—'}
+                                </td>
+                                <td className="px-4 py-1.5 text-xs font-medium text-secondary">{fmt(branchData.total)} &#8362;</td>
+                                <td className="px-4 py-1.5" />
+                              </tr>
+                            ))}
+                          </Fragment>
+                        ))}
+
+                        {/* Spacer between companies */}
+                        {ci < salaryComposition.length - 1 && (
+                          <tr><td colSpan={5} className="h-1 bg-surface-container" /></tr>
+                        )}
+                      </Fragment>
+                    );
+                  })}
+                </tbody>
+                <tfoot>
+                  <tr className="bg-primary-container text-on-primary-container font-bold">
+                    <td className="px-4 py-4">
+                      <div className="flex items-center gap-2">
+                        <Icon name="payments" size="sm" />
+                        <span>סה"כ שכר גולמי</span>
+                      </div>
+                    </td>
+                    <td className="px-4 py-4">{recordCount}</td>
+                    <td className="px-4 py-4" />
+                    <td className="px-4 py-4 text-xl font-headline font-black">{fmt(totalCommission)} &#8362;</td>
+                    <td className="px-4 py-4">100%</td>
+                  </tr>
+                </tfoot>
+              </table>
+            </div>
+
+            {/* Visual bar */}
+            {salaryComposition.length > 1 && (
+              <div className="bg-surface-container-lowest rounded-lg p-4">
+                <p className="text-xs font-black uppercase tracking-widest text-on-surface-variant mb-3">חלוקת הכנסות לפי חברה</p>
+                <div className="flex h-5 rounded-full overflow-hidden bg-surface-container-high">
+                  {salaryComposition.map((company, idx) => {
+                    const colors = ['bg-primary', 'bg-secondary', 'bg-error', 'bg-tertiary-container', 'bg-on-surface-variant'];
+                    return (
+                      <div
+                        key={company.name}
+                        className={`${colors[idx % colors.length]} transition-all relative group`}
+                        style={{ width: `${Math.max(company.pct, 2)}%` }}
+                      >
+                        <div className="absolute -top-8 left-1/2 -translate-x-1/2 bg-on-surface text-surface text-[10px] px-2 py-0.5 rounded opacity-0 group-hover:opacity-100 transition-opacity whitespace-nowrap pointer-events-none z-10">
+                          {company.name}: {fmt(company.total)} ₪
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+                <div className="flex justify-between mt-2 flex-wrap gap-x-4 gap-y-1">
+                  {salaryComposition.map((company, idx) => {
+                    const dotColors = ['bg-primary', 'bg-secondary', 'bg-error', 'bg-tertiary-container', 'bg-on-surface-variant'];
+                    return (
+                      <div key={company.name} className="flex items-center gap-1.5">
+                        <div className={`w-2.5 h-2.5 rounded-full ${dotColors[idx % dotColors.length]}`} />
+                        <span className="text-xs text-on-surface-variant font-medium">{company.name}</span>
+                        <span className="text-xs font-bold text-on-surface">{fmt(company.total)} &#8362;</span>
+                      </div>
+                    );
+                  })}
+                </div>
+              </div>
+            )}
+          </section>
+        )}
+
         {/* No data */}
         {transactions.length === 0 && (
           <div className="bg-surface-container-lowest rounded-lg p-12 text-center">
@@ -279,6 +496,7 @@ export default function MonthlySalesPage() {
                                   <th className="px-3 py-2.5">פרמיה</th>
                                   <th className="px-3 py-2.5">עמלה</th>
                                   <th className="px-3 py-2.5">אחוז</th>
+                                  <th className="px-3 py-2.5">חברה</th>
                                   <th className="px-3 py-2.5">סוג דוח</th>
                                 </tr>
                               </thead>
@@ -293,6 +511,11 @@ export default function MonthlySalesPage() {
                                     <td className="px-3 py-2.5 font-bold text-secondary">{fmt(rec.commissionAmount)}</td>
                                     <td className="px-3 py-2.5 text-xs">{rec.commissionRate != null ? `${rec.commissionRate}%` : '—'}</td>
                                     <td className="px-3 py-2.5">
+                                      <span className="bg-surface-container-high text-on-surface-variant px-2 py-0.5 rounded text-xs font-medium">
+                                        {rec.insuranceCompany || '—'}
+                                      </span>
+                                    </td>
+                                    <td className="px-3 py-2.5">
                                       <span className="bg-primary-fixed text-primary px-2 py-0.5 rounded text-xs font-bold">
                                         {REPORT_TYPE_HE[rec.reportType] || rec.reportType}
                                       </span>
@@ -306,13 +529,13 @@ export default function MonthlySalesPage() {
                       );
                     })}
 
-                    {/* Grand total */}
-                    <div className="bg-primary-container text-on-primary-container p-5 rounded-lg flex justify-between items-center">
+                    {/* Grand total per-branch */}
+                    <div className="bg-surface-container-low text-on-surface p-4 rounded-lg flex justify-between items-center">
                       <div>
-                        <p className="text-sm font-bold">סה"כ שכר גולמי — {selectedMonth ? formatMonth(selectedMonth) : ''}</p>
-                        <p className="text-xs opacity-80">{recordCount} רשומות מ-{groupedByBranch.length} ענפים</p>
+                        <p className="text-sm font-bold">סה"כ לפי ענפים</p>
+                        <p className="text-xs text-on-surface-variant">{recordCount} רשומות מ-{groupedByBranch.length} ענפים</p>
                       </div>
-                      <p className="text-3xl font-headline font-black">{fmt(totalCommission)} &#8362;</p>
+                      <p className="text-xl font-headline font-black text-primary">{fmt(totalCommission)} &#8362;</p>
                     </div>
                   </>
                 )}
