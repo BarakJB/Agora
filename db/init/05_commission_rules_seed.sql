@@ -1,4 +1,4 @@
--- PayAgent Seed Data — Commission Rules
+-- Agora Seed Data — Commission Rules
 -- Business rules for insurance commission timing per company/product
 SET NAMES utf8mb4;
 

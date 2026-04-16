@@ -1,4 +1,4 @@
-# PayAgent — מפרט אשף הקליטה (Onboarding Wizard)
+# Agora — מפרט אשף הקליטה (Onboarding Wizard)
 
 > **סטטוס:** טיוטה לאישור  
 > **תאריך:** 2026-04-05  
@@ -197,7 +197,7 @@ interface Props {
 │                                                         │
 │   [אייקון/אילוסטרציה — account_balance_wallet, גדול]  │
 │                                                         │
-│   ברוך הבא ל-PayAgent, {שם}!                           │
+│   ברוך הבא ל-Agora, {שם}!                           │
 │                                                         │
 │   בדקות הקרובות נגדיר יחד את המערכת שלך.               │
 │   בסוף התהליך תראה את תמונת העמלות המלאה שלך.          │
@@ -785,7 +785,7 @@ interface OnboardingState {
 ### Persist Strategy
 
 - `onboardingStore` משתמש ב-`persist` middleware של zustand (כמו `authStore`)
-- key: `payagent-onboarding`
+- key: `agora-onboarding`
 - מנקים את ה-store כש-`onboardingCompleted = true`
 
 ---

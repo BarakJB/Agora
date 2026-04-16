@@ -1,4 +1,4 @@
--- PayAgent Schema Migration v3
+-- Agora Schema Migration v3
 -- Adds: commission_reports (typed upload tracking), commission_rules (business logic)
 -- Extends: uploads table with report_type column
 

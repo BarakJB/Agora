@@ -1,4 +1,4 @@
--- PayAgent Schema Migration v2
+-- Agora Schema Migration v2
 -- Support for real insurance commission Excel file structures
 -- Adds: commission_branches, commission_rates, agent_advances
 -- Alters: commissions table with detailed fields

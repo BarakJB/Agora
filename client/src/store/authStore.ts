@@ -35,7 +35,7 @@ interface AuthState {
 const DEMO_PROFILE: UserProfile = {
   id: 'a0000001-0000-0000-0000-000000000001',
   name: 'דניאל אהרוני',
-  email: 'd.aharoni@payagent.co.il',
+  email: 'd.aharoni@agora.co.il',
   phone: '054-9876543',
   licenseNumber: '052-998432-1',
   role: 'סוכן פנסיוני בכיר',

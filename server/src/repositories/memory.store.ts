@@ -21,7 +21,7 @@ class MemoryStore {
       agentId: '052998432',
       agencyId: 'AG-001',
       name: 'דניאל אהרוני',
-      email: 'd.aharoni@payagent.co.il',
+      email: 'd.aharoni@agora.co.il',
       phone: '054-9876543',
       licenseNumber: '052-998432-1',
       taxId: '052998432',

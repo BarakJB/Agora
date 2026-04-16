@@ -1,4 +1,4 @@
--- PayAgent Database Schema
+-- Agora Database Schema
 -- MySQL 8.4 | UTF-8 | Israeli Insurance Agent Commission System
 
 SET NAMES utf8mb4;

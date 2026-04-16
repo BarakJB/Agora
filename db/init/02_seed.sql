@@ -1,4 +1,4 @@
--- PayAgent Seed Data
+-- Agora Seed Data
 SET NAMES utf8mb4;
 
 -- ============================================================
@@ -15,7 +15,7 @@ INSERT INTO insurance_companies (id, name, code, contact_email, portal_url) VALU
 -- Agent
 -- ============================================================
 INSERT INTO agents (id, agent_id, agency_id, name, email, phone, license_number, tax_id, tax_status, nii_rate) VALUES
-  ('a0000001-0000-0000-0000-000000000001', '052998432', 'AG-001', 'דניאל אהרוני', 'd.aharoni@payagent.co.il', '054-9876543', '052-998432-1', '052998432', 'self_employed', 17.83);
+  ('a0000001-0000-0000-0000-000000000001', '052998432', 'AG-001', 'דניאל אהרוני', 'd.aharoni@agora.co.il', '054-9876543', '052-998432-1', '052998432', 'self_employed', 17.83);
 
 -- ============================================================
 -- Clients

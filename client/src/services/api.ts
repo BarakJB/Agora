@@ -1,5 +1,5 @@
 /**
- * API client — typed fetch wrapper for PayAgent backend.
+ * API client — typed fetch wrapper for Agora backend.
  * Base URL comes from Vite proxy (/api → localhost:3001).
  */
 
