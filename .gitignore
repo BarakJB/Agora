@@ -1,5 +1,6 @@
 node_modules/
-dist/
+server/dist/
+# client/dist is committed — built locally, served on Lightsail
 
 # Environment
 .env
