@@ -12,6 +12,7 @@ import { salesRouter } from './routes/sales.routes.js';
 import { predictionRouter } from './routes/prediction.routes.js';
 import { stripeRouter } from './routes/stripe.routes.js';
 import { ratesRouter } from './routes/rates.routes.js';
+import { generateCommissionTemplate } from './services/commission-template.service.js';
 import { requireAuth } from './middleware/auth.middleware.js';
 import { errorHandler } from './middleware/errorHandler.js';
 import { requestId } from './middleware/requestId.js';
@@ -78,6 +79,20 @@ app.get('/api/health', (_req, res) => {
 
 // Auth routes (public)
 app.use('/api/v1/auth', authRouter);
+
+// Public file downloads — must be before requireAuth
+app.get('/api/v1/rates/template', (_req, res) => {
+  const buf = generateCommissionTemplate();
+  res.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
+  res.setHeader('Content-Disposition', 'attachment; filename="agora_commission_template.xlsx"');
+  res.send(buf);
+});
+app.get('/api/v1/rates/sample', (_req, res) => {
+  const buf = generateCommissionTemplate('לדוגמה', true);
+  res.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
+  res.setHeader('Content-Disposition', 'attachment; filename="agora_sample_commission_agreement.xlsx"');
+  res.send(buf);
+});
 
 // Stripe checkout (public, uses JSON body)
 app.use('/api/v1/stripe', stripeRouter);

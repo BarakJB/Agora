@@ -169,7 +169,6 @@ export default function OnboardingPage() {
   /* ───── Step 4 Upload ───── */
 
   const fileInputRef = useRef<HTMLInputElement>(null);
-
   const handleUpload = useCallback(async (companyId: string, file: File) => {
     const ext = file.name.toLowerCase();
     if (!ext.endsWith('.xls') && !ext.endsWith('.xlsx') && !ext.endsWith('.csv')) return;
@@ -710,10 +709,31 @@ function StepUpload({
   return (
     <div className="space-y-6">
       <div>
-        <h2 className="font-headline text-2xl font-bold text-on-surface mb-2">העלאת דוחות עמלות</h2>
+        <h2 className="font-headline text-2xl font-bold text-on-surface mb-2">העלאת קבצים</h2>
         <p className="text-on-surface-variant leading-relaxed">
-          העלה את דוחות העמלות האחרונים שקיבלת מכל חברה.
+          העלה הסכם עמלות (מכסה את כל החברות) ו/או דוחות חודשיים לפי חברה.
         </p>
+      </div>
+
+      {/* Agreement download */}
+      <div className="rounded-xl border border-outline-variant bg-surface-container-low p-5 flex items-center justify-between gap-4">
+        <div className="flex items-center gap-3">
+          <div className="p-2 rounded-lg bg-primary-fixed text-primary">
+            <Icon name="contract" size="sm" />
+          </div>
+          <div>
+            <p className="font-bold text-on-surface text-sm">הסכם עמלות — כל החברות בקובץ אחד</p>
+            <p className="text-xs text-on-surface-variant">הורד את הקובץ, מלא את השיעורים והעלה במסך העלאות</p>
+          </div>
+        </div>
+        <a
+          href="/api/v1/rates/sample"
+          download="agora_sample_commission_agreement.xlsx"
+          className="flex items-center gap-1.5 px-4 py-2 rounded-lg bg-primary text-on-primary text-xs font-bold hover:shadow-md transition-all shrink-0"
+        >
+          <Icon name="download" size="sm" />
+          הורד דוגמה
+        </a>
       </div>
 
       {/* Progress */}
@@ -809,15 +829,6 @@ function StepUpload({
               >
                 בחר קובץ מהמחשב
               </button>
-              <a
-                href="/api/v1/rates/template"
-                download="agora_commission_template.xlsx"
-                onClick={(e) => e.stopPropagation()}
-                className="flex items-center gap-1.5 bg-surface-container text-on-surface-variant px-4 py-2.5 rounded-lg font-semibold text-sm hover:bg-surface-container-high transition-colors"
-              >
-                <span className="material-symbols-outlined text-base leading-none">download</span>
-                תבנית הסכם עמלות
-              </a>
             </div>
           </div>
 

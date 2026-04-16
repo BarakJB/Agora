@@ -24,6 +24,14 @@ ratesRouter.get('/template', (_req, res) => {
   res.send(buf);
 });
 
+// GET /api/v1/rates/sample — download filled sample with example rates
+ratesRouter.get('/sample', (_req, res) => {
+  const buf = generateCommissionTemplate('לדוגמה', true);
+  res.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
+  res.setHeader('Content-Disposition', 'attachment; filename="agora_sample_commission_agreement.xlsx"');
+  res.send(buf);
+});
+
 // GET /api/v1/rates — get authenticated agent's commission rates
 ratesRouter.get('/', async (req, res, next) => {
   try {

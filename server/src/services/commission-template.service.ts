@@ -32,11 +32,20 @@ export interface CommissionRate {
   isFixedAmount: boolean;
 }
 
+// Example rates for the sample file — mirrors real-world values from the file
+const SAMPLE_RATES: Record<string, Record<'נפרעים' | 'היקף', number | null>> = {
+  'סיכונים':        { 'נפרעים': 0.20,  'היקף': 0.50  },
+  'פנסיה':          { 'נפרעים': 0.005, 'היקף': 0.04  },
+  'גמל והשתלמות':   { 'נפרעים': 0.0025,'היקף': 6500  },
+  'חסכון פרט':      { 'נפרעים': 0.0025,'היקף': 6500  },
+  'ניודי פנסיה':    { 'נפרעים': null,  'היקף': 3000  },
+};
+
 /**
  * Generates a blank commission agreement template Excel buffer.
  * Structure mirrors "הסכם עמלות" format: rows=product×type, columns=companies.
  */
-export function generateCommissionTemplate(agentName?: string): Buffer {
+export function generateCommissionTemplate(agentName?: string, withSample = false): Buffer {
   const wb = XLSX.utils.book_new();
 
   const headerRow = ['סוג מוצר', 'סוג עמלה', ...COMPANIES];
@@ -50,7 +59,10 @@ export function generateCommissionTemplate(agentName?: string): Buffer {
     prevProduct = row.product;
 
     const hint = row.isFixedHint ? ` (${row.isFixedHint})` : '';
-    rows.push([productCell, row.commissionType + hint, ...COMPANIES.map(() => '')]);
+    const sampleRow = withSample
+      ? COMPANIES.map(() => SAMPLE_RATES[row.product]?.[row.commissionType] ?? '')
+      : COMPANIES.map(() => '');
+    rows.push([productCell, row.commissionType + hint, ...sampleRow]);
   }
 
   const ws = XLSX.utils.aoa_to_sheet(rows);
@@ -66,17 +78,6 @@ export function generateCommissionTemplate(agentName?: string): Buffer {
   ws['!merges'] = [{ s: { r: 0, c: 0 }, e: { r: 0, c: COMPANIES.length + 1 } }];
 
   XLSX.utils.book_append_sheet(wb, ws, 'הסכם עמלות');
-
-  // Second sheet: agent numbers per company
-  const numbersRows: unknown[][] = [
-    ['מספרי סוכן לחברות'],
-    ['חברה', ...COMPANIES],
-    ['מספר סוכן', ...COMPANIES.map(() => '')],
-  ];
-  const wsNumbers = XLSX.utils.aoa_to_sheet(numbersRows);
-  wsNumbers['!cols'] = [{ wch: 16 }, ...COMPANIES.map(() => ({ wch: 12 }))];
-  wsNumbers['!merges'] = [{ s: { r: 0, c: 0 }, e: { r: 0, c: COMPANIES.length } }];
-  XLSX.utils.book_append_sheet(wb, wsNumbers, 'מספרי סוכן');
 
   return Buffer.from(XLSX.write(wb, { type: 'buffer', bookType: 'xlsx' }));
 }

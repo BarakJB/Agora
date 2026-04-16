@@ -1,6 +1,6 @@
 import { useRef, useState, useMemo } from 'react';
 import Icon from '../components/ui/Icon';
-import { useDataStore, type UploadRow } from '../store/dataStore';
+import { useDataStore } from '../store/dataStore';
 
 interface ParsedRecord {
   reportType: string;
@@ -78,13 +78,10 @@ export default function CommissionUploadPage() {
 
   const [isDragging, setIsDragging] = useState(false);
   const [selectedCompany, setSelectedCompany] = useState('');
-  const [selectedReportType, setSelectedReportType] = useState('');
   const [parsing, setParsing] = useState(false);
   const [parseResults, setParseResults] = useState<ParseResult[] | null>(null);
   const [parseMeta, setParseMeta] = useState<ParseMeta | null>(null);
   const [parseError, setParseError] = useState<string | null>(null);
-  const [companyRequired, setCompanyRequired] = useState(false);
-  const [pendingFile, setPendingFile] = useState<File | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   function handleDragOver(e: React.DragEvent) {
@@ -120,30 +117,7 @@ export default function CommissionUploadPage() {
       return;
     }
 
-    // Company is required — most Excel files don't contain company identification
-    if (!selectedCompany) {
-      setCompanyRequired(true);
-      setPendingFile(file);
-      setParseError('יש לבחור חברת ביטוח לפני העלאת הקובץ — רוב הדוחות לא מכילים זיהוי חברה');
-      return;
-    }
-
-    setCompanyRequired(false);
-    setPendingFile(null);
-
-    if (isExcel || isZip || isCsv) {
-      await parseExcelFile(file);
-    } else {
-      const upload: UploadRow = {
-        id: crypto.randomUUID(),
-        fileName: file.name,
-        company: selectedCompany,
-        date: new Date().toLocaleDateString('he-IL'),
-        records: 0,
-        status: 'completed',
-      };
-      addUpload(upload);
-    }
+    await parseExcelFile(file);
   }
 
   async function parseExcelFile(file: File) {
@@ -230,21 +204,11 @@ export default function CommissionUploadPage() {
     }
   }
 
-  function downloadSampleCsv() {
-    const headers = 'policy_number,client_name,client_id,product_type,premium_amount,commission_pct,recurring_pct,start_date,insurance_company\n';
-    const rows = [
-      'POL-001,ישראל ישראלי,301234567,pension,8500,15,1.5,2026-01-15,הראל',
-      'POL-002,שרה כהן,302345678,health,3200,18,3,2026-02-01,מגדל',
-      'POL-003,דוד לוי,303456789,life_insurance,12000,15,2.5,2026-02-10,הפניקס',
-    ].join('\n');
-    const BOM = '\uFEFF';
-    const blob = new Blob([BOM + headers + rows], { type: 'text/csv;charset=utf-8;' });
-    const url = URL.createObjectURL(blob);
+  function downloadSampleAgreement() {
     const a = document.createElement('a');
-    a.href = url;
-    a.download = 'agora_sample_commissions.csv';
+    a.href = '/api/v1/rates/sample';
+    a.download = 'agora_sample_commission_agreement.xlsx';
     a.click();
-    URL.revokeObjectURL(url);
   }
 
   const fmt = (n: number) => n.toLocaleString('he-IL', { maximumFractionDigits: 2 });
@@ -267,96 +231,6 @@ export default function CommissionUploadPage() {
         <div className="col-span-12 lg:col-span-8 space-y-8">
           <div className="bg-surface-container-lowest p-8 rounded-lg shadow-editorial">
             <div className="flex flex-col gap-6">
-              {/* Company + Report Type selection */}
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                <div className="space-y-2">
-                  <label htmlFor="company-select" className="text-sm font-bold text-on-surface-variant uppercase tracking-widest block">
-                    חברת ביטוח <span className="text-error">*</span>
-                    {companyRequired && !selectedCompany && (
-                      <span className="normal-case tracking-normal text-error text-xs ms-2">— חובה</span>
-                    )}
-                  </label>
-                  <div className="relative">
-                    <select
-                      id="company-select"
-                      className={`w-full appearance-none border-none rounded-lg px-5 py-4 font-semibold text-primary focus:ring-2 focus:ring-primary/40 transition-all ${
-                        companyRequired && !selectedCompany
-                          ? 'bg-error-container/30 ring-2 ring-error/40'
-                          : 'bg-surface-container-high'
-                      }`}
-                      value={selectedCompany}
-                      onChange={(e) => {
-                        const company = e.target.value;
-                        setSelectedCompany(company);
-                        setCompanyRequired(false);
-                        setParseError(null);
-                        if (company && pendingFile) {
-                          const file = pendingFile;
-                          setPendingFile(null);
-                          setTimeout(() => processFile(file), 0);
-                        }
-                      }}
-                    >
-                      <option value="">בחר חברה...</option>
-                      <option value="הראל">הראל</option>
-                      <option value="מגדל">מגדל</option>
-                      <option value="מנורה מבטחים">מנורה מבטחים</option>
-                      <option value="הפניקס">הפניקס</option>
-                      <option value="כלל">כלל ביטוח</option>
-                      <option value="הכשרה">הכשרה</option>
-                      <option value="אלטשולר שחם">אלטשולר שחם</option>
-                      <option value="מיטב דש">מיטב דש</option>
-                      <option value="פסגות">פסגות</option>
-                      <option value="אנליסט">אנליסט</option>
-                    </select>
-                    <Icon name="expand_more" className="absolute left-4 top-1/2 -translate-y-1/2 pointer-events-none text-primary" />
-                  </div>
-                </div>
-
-                <div className="space-y-2">
-                  <label htmlFor="report-type-select" className="text-sm font-bold text-on-surface-variant uppercase tracking-widest block">
-                    סוג דוח
-                    <span className="normal-case tracking-normal text-on-surface-variant/60 text-xs ms-2">זיהוי אוטומטי</span>
-                  </label>
-                  <div className="relative">
-                    <select
-                      id="report-type-select"
-                      className="w-full appearance-none bg-surface-container-high border-none rounded-lg px-5 py-4 font-semibold text-primary focus:ring-2 focus:ring-primary/40 transition-all"
-                      value={selectedReportType}
-                      onChange={(e) => setSelectedReportType(e.target.value)}
-                    >
-                      <option value="">זיהוי אוטומטי מהגיליון</option>
-                      <optgroup label="עמלות שוטפות">
-                        <option value="nifraim">נפרעים — עמלות שוטפות על פרמיות</option>
-                        <option value="accumulation_nifraim">נפרעים צבירה — גמל/השתלמות (ללא פנסיה)</option>
-                      </optgroup>
-                      <optgroup label="עמלות חד-פעמיות">
-                        <option value="hekef">היקף — עמלה חד-פעמית (ניוד/הצטרפות)</option>
-                        <option value="accumulation_hekef">היקף צבירה — תגמול על ניוד גמל/השתלמות</option>
-                      </optgroup>
-                      <optgroup label="דוחות סיכום">
-                        <option value="branch_distribution">התפלגות ענפים</option>
-                        <option value="agent_data">רשימת נתונים לסוכן</option>
-                        <option value="product_distribution">התפלגות מוצרים</option>
-                      </optgroup>
-                    </select>
-                    <Icon name="expand_more" className="absolute left-4 top-1/2 -translate-y-1/2 pointer-events-none text-primary" />
-                  </div>
-                </div>
-              </div>
-
-              {/* Selected context indicator */}
-              {selectedCompany && (
-                <div className="flex items-center gap-3 bg-primary-fixed/20 rounded-lg px-4 py-3">
-                  <Icon name="business" size="sm" className="text-primary" />
-                  <span className="text-sm font-medium text-primary">
-                    מעלה קבצים עבור <strong>{selectedCompany}</strong>
-                    {selectedReportType && (
-                      <> — {REPORT_TYPE_LABELS[selectedReportType]}</>
-                    )}
-                  </span>
-                </div>
-              )}
 
               <input
                 ref={fileInputRef}
@@ -400,23 +274,12 @@ export default function CommissionUploadPage() {
                       <span className="bg-primary-fixed text-primary text-xs font-bold px-3 py-1 rounded-full">.zip</span>
                       <span className="bg-surface-container-high text-on-surface-variant text-xs font-bold px-3 py-1 rounded-full">.csv</span>
                     </div>
-                    <div className="flex gap-2 mt-4">
-                      <button
-                        className="bg-primary text-on-primary px-8 py-3 rounded-lg font-bold hover:shadow-lg transition-all"
-                        onClick={(e) => { e.stopPropagation(); fileInputRef.current?.click(); }}
-                      >
-                        בחר קובץ מהמחשב
-                      </button>
-                      <a
-                        href="/api/v1/rates/template"
-                        download="agora_commission_template.xlsx"
-                        onClick={(e) => e.stopPropagation()}
-                        className="flex items-center gap-1.5 bg-surface-container text-on-surface-variant px-5 py-3 rounded-lg font-semibold hover:bg-surface-container-high transition-colors text-sm"
-                      >
-                        <span className="material-symbols-outlined text-base leading-none">download</span>
-                        תבנית הסכם עמלות
-                      </a>
-                    </div>
+                    <button
+                      className="mt-4 bg-primary text-on-primary px-8 py-3 rounded-lg font-bold hover:shadow-lg transition-all"
+                      onClick={(e) => { e.stopPropagation(); fileInputRef.current?.click(); }}
+                    >
+                      בחר קובץ מהמחשב
+                    </button>
                   </>
                 )}
               </div>
@@ -723,10 +586,10 @@ export default function CommissionUploadPage() {
                 </li>
               </ul>
               <button
-                onClick={downloadSampleCsv}
+                onClick={downloadSampleAgreement}
                 className="mt-8 w-full py-3 bg-on-primary-container text-primary font-bold rounded-lg hover:bg-white transition-colors"
               >
-                הורד קובץ CSV לדוגמה
+                הורד הסכם עמלות לדוגמה
               </button>
             </div>
             <div className="absolute -bottom-24 -left-24 w-64 h-64 bg-primary-fixed rounded-full blur-[80px] opacity-20" />
