@@ -873,3 +873,79 @@ export async function getAgentCompanyNumbers(agentId: string): Promise<AgentComp
     updatedAt: r.updated_at as string,
   }));
 }
+
+
+// ─────────────────────────────────────────────
+// AGENT COMMISSION RATES
+// ─────────────────────────────────────────────
+
+export interface AgentCommissionRate {
+  id: string;
+  agentId: string;
+  insuranceCompanyId: string;
+  insuranceCompanyName: string;
+  productType: string;
+  commissionType: 'נפרעים' | 'היקף';
+  rate: number | null;
+  isFixedAmount: boolean;
+  isActive: boolean;
+  updatedAt: string;
+}
+
+export async function getAgentCommissionRates(agentId: string): Promise<AgentCommissionRate[]> {
+  const [rows] = await pool.query<RowDataPacket[]>(
+    `SELECT acr.id, acr.agent_id, acr.insurance_company_id,
+            ic.name AS insurance_company_name,
+            acr.product_type, acr.commission_type,
+            acr.rate, acr.is_fixed_amount, acr.is_active, acr.updated_at
+     FROM agent_commission_rates acr
+     JOIN insurance_companies ic ON ic.id = acr.insurance_company_id
+     WHERE acr.agent_id = ?
+     ORDER BY acr.product_type, acr.commission_type, ic.name`,
+    [agentId],
+  );
+  return rows.map((r) => ({
+    id: r.id as string,
+    agentId: r.agent_id as string,
+    insuranceCompanyId: r.insurance_company_id as string,
+    insuranceCompanyName: r.insurance_company_name as string,
+    productType: r.product_type as string,
+    commissionType: r.commission_type as 'נפרעים' | 'היקף',
+    rate: r.rate !== null ? Number(r.rate) : null,
+    isFixedAmount: r.is_fixed_amount === 1,
+    isActive: r.is_active === 1,
+    updatedAt: r.updated_at as string,
+  }));
+}
+
+export async function upsertAgentCommissionRates(
+  agentId: string,
+  rates: Array<{
+    insuranceCompanyId: string;
+    productType: string;
+    commissionType: 'נפרעים' | 'היקף';
+    rate: number | null;
+    isFixedAmount: boolean;
+  }>,
+): Promise<void> {
+  if (rates.length === 0) return;
+  const { v4: uuid } = await import('uuid');
+
+  const values = rates.map((r) => [
+    uuid(), agentId, r.insuranceCompanyId,
+    r.productType, r.commissionType,
+    r.rate, r.isFixedAmount ? 1 : 0,
+  ]);
+
+  await pool.query(
+    `INSERT INTO agent_commission_rates
+       (id, agent_id, insurance_company_id, product_type, commission_type, rate, is_fixed_amount)
+     VALUES ?
+     ON DUPLICATE KEY UPDATE
+       rate            = VALUES(rate),
+       is_fixed_amount = VALUES(is_fixed_amount),
+       is_active       = 1,
+       updated_at      = CURRENT_TIMESTAMP`,
+    [values],
+  );
+}

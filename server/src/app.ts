@@ -11,6 +11,7 @@ import { uploadRouter } from './routes/upload.routes.js';
 import { salesRouter } from './routes/sales.routes.js';
 import { predictionRouter } from './routes/prediction.routes.js';
 import { stripeRouter } from './routes/stripe.routes.js';
+import { ratesRouter } from './routes/rates.routes.js';
 import { requireAuth } from './middleware/auth.middleware.js';
 import { errorHandler } from './middleware/errorHandler.js';
 import { requestId } from './middleware/requestId.js';
@@ -89,6 +90,7 @@ app.use('/api/v1/tax', requireAuth, taxRouter);
 app.use('/api/v1/uploads', requireAuth, uploadRouter);
 app.use('/api/v1/sales', requireAuth, salesRouter);
 app.use('/api/v1/predictions', requireAuth, predictionRouter);
+app.use('/api/v1/rates', requireAuth, ratesRouter);
 
 app.use(errorHandler);
 

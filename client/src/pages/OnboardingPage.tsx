@@ -802,12 +802,23 @@ function StepUpload({
               <span className="bg-primary-fixed text-primary text-xs font-bold px-3 py-1 rounded-full">.xlsx</span>
               <span className="bg-surface-container-high text-on-surface-variant text-xs font-bold px-3 py-1 rounded-full">.csv</span>
             </div>
-            <button
-              className="mt-2 bg-primary text-on-primary px-6 py-2.5 rounded-lg font-bold text-sm hover:shadow-lg transition-all"
-              onClick={(e) => { e.stopPropagation(); fileInputRef.current?.click(); }}
-            >
-              בחר קובץ מהמחשב
-            </button>
+            <div className="flex gap-2 mt-2">
+              <button
+                className="bg-primary text-on-primary px-6 py-2.5 rounded-lg font-bold text-sm hover:shadow-lg transition-all"
+                onClick={(e) => { e.stopPropagation(); fileInputRef.current?.click(); }}
+              >
+                בחר קובץ מהמחשב
+              </button>
+              <a
+                href="/api/v1/rates/template"
+                download="agora_commission_template.xlsx"
+                onClick={(e) => e.stopPropagation()}
+                className="flex items-center gap-1.5 bg-surface-container text-on-surface-variant px-4 py-2.5 rounded-lg font-semibold text-sm hover:bg-surface-container-high transition-colors"
+              >
+                <span className="material-symbols-outlined text-base leading-none">download</span>
+                תבנית הסכם עמלות
+              </a>
+            </div>
           </div>
 
           {/* Uploaded files list */}

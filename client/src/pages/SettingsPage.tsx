@@ -1,6 +1,7 @@
 import Icon from '../components/ui/Icon';
 import { useAuthStore } from '../store/authStore';
 import { useDataStore } from '../store/dataStore';
+import CommissionRatesEditor from '../components/CommissionRatesEditor';
 
 const links = [
   { icon: 'download', title: 'לוח עמלות סוכנים - הראל ביטוח (PDF)', desc: 'עודכן לאחרונה: 01/01/2026' },
@@ -166,6 +167,11 @@ export default function SettingsPage() {
               </div>
             </section>
           </div>
+        </div>
+
+        {/* Commission Rates Editor */}
+        <div className="grid grid-cols-12 gap-8 mt-8">
+          <CommissionRatesEditor />
         </div>
       </div>
     </div>
