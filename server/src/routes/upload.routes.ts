@@ -8,6 +8,10 @@ import {
   createUpload,
   createCommissionBatch,
   resolveInsuranceCompanyId,
+  upsertAgentCompanyNumber,
+  getAgentByCompanyNumber,
+  getAgentCompanyNumbers,
+  getRegisteredAgentNumber,
 } from '../repositories/mysql.repository.js';
 import { validate } from '../middleware/validate.js';
 import { idParamSchema } from '../validators/common.schemas.js';
@@ -19,6 +23,17 @@ import { parseMenoraZip, isMenoraZip, parseMenoraCsvBuffer, isMenoraCsvFileName 
 const upload = multer({ storage: multer.memoryStorage(), limits: { fileSize: 10 * 1024 * 1024 } });
 
 export const uploadRouter = Router();
+
+// GET /api/v1/uploads/agent-numbers/:agentId — all company numbers for an agent
+uploadRouter.get('/agent-numbers/:agentId', async (req, res, next) => {
+  try {
+    const { agentId } = req.params as { agentId: string };
+    const numbers = await getAgentCompanyNumbers(agentId);
+    res.json({ data: numbers, error: null, meta: null });
+  } catch (err) {
+    next(err);
+  }
+});
 
 uploadRouter.get(
   '/',
@@ -234,23 +249,105 @@ uploadRouter.post('/parse', upload.single('file'), async (req, res, next) => {
       }
     }
 
+    // agentId comes from JWT (set by requireAuth middleware)
+    const agentId = res.locals.agentId as string | undefined;
+    const insuranceCompanyCode = req.body.insuranceCompany as string | undefined;
+
     // Try commission reports first, fallback to agreement parser
     let results;
     let isAgreement = false;
+    let agreementAgentNumber: string | null = null;
+    let agreementAgentTaxId: string | null = null;
+    let skippedDueMismatch = 0;
+    let mismatchWarning: string | null = null;
+
     try {
       results = parseExcelBuffer(file.buffer);
+
+      // Filter records by registered agent number
+      if (agentId && insuranceCompanyCode) {
+        const insuranceCompanyId = await resolveInsuranceCompanyId(insuranceCompanyCode);
+        if (insuranceCompanyId) {
+          const registeredNumber = await getRegisteredAgentNumber(agentId, insuranceCompanyId);
+
+          if (registeredNumber !== null) {
+            // Filter out records whose agent number doesn't match
+            for (const sheet of results) {
+              const before = sheet.records.length;
+              sheet.records = sheet.records.filter(
+                (rec) => !rec.agentNumber || rec.agentNumber === registeredNumber,
+              );
+              skippedDueMismatch += before - sheet.records.length;
+            }
+            if (skippedDueMismatch > 0) {
+              mismatchWarning = `${skippedDueMismatch} שורות לא נכללו בחישוב — מספר סוכן בקובץ אינו תואם למספר הרשום שלך (${registeredNumber})`;
+            }
+          } else {
+            // No registered number yet — register from first valid record
+            const firstNumber = results
+              .flatMap((r) => r.records)
+              .find((rec) => rec.agentNumber)?.agentNumber ?? null;
+
+            if (firstNumber) {
+              const owner = await getAgentByCompanyNumber(insuranceCompanyId, firstNumber);
+              if (owner && owner.agentId !== agentId) {
+                // Number belongs to another agent — filter all records with this number
+                for (const sheet of results) {
+                  const before = sheet.records.length;
+                  sheet.records = sheet.records.filter((rec) => !rec.agentNumber);
+                  skippedDueMismatch += before - sheet.records.length;
+                }
+                mismatchWarning = `${skippedDueMismatch} שורות לא נכללו — מספר סוכן ${firstNumber} רשום על שם סוכן אחר`;
+              } else {
+                await upsertAgentCompanyNumber(agentId, insuranceCompanyId, firstNumber);
+              }
+            }
+          }
+        }
+      }
     } catch (commissionErr) {
       // Not a commission file — try agreement parser
       try {
         const agreement = parseAgreementFile(file.buffer);
         isAgreement = true;
+        agreementAgentNumber = agreement.agentNumber;
+        agreementAgentTaxId = agreement.agentTaxId;
+
+        // Save agent-company mapping when agentId + company are known
+        if (agentId && insuranceCompanyCode) {
+          const insuranceCompanyId = await resolveInsuranceCompanyId(insuranceCompanyCode);
+          if (insuranceCompanyId && agreement.agentNumber) {
+            // Verify ת.ז. in file matches authenticated agent
+            const agent = await getAgentById(agentId);
+            if (agent && agreement.agentTaxId && agent.agentId !== agreement.agentTaxId) {
+              res.status(403).json({
+                data: null,
+                error: `ת.ז. בהסכם (${agreement.agentTaxId}) אינה תואמת לסוכן המחובר`,
+                meta: null,
+              });
+              return;
+            }
+
+            const registeredNumber = await getRegisteredAgentNumber(agentId, insuranceCompanyId);
+            if (registeredNumber !== null && registeredNumber !== agreement.agentNumber) {
+              res.status(403).json({
+                data: null,
+                error: `מספר סוכן בהסכם (${agreement.agentNumber}) שונה מהמספר הרשום (${registeredNumber})`,
+                meta: null,
+              });
+              return;
+            }
+            await upsertAgentCompanyNumber(agentId, insuranceCompanyId, agreement.agentNumber);
+          }
+        }
+
         results = [{
           reportType: 'agreement' as const,
           sheetName: 'הסכם עמלות',
           records: agreement.rates.map((r) => ({
             id: '',
             reportType: 'agreement' as const,
-            agentNumber: null,
+            agentNumber: agreement.agentNumber,
             agentName: agreement.agentName,
             policyNumber: null,
             branch: r.product,
@@ -296,8 +393,6 @@ uploadRouter.post('/parse', upload.single('file'), async (req, res, next) => {
 
     const totalRecords = results.reduce((sum, r) => sum + r.records.length, 0);
     const totalErrors = results.reduce((sum, r) => sum + r.errors.length, 0);
-
-    // Detect company from parse results
     const detectedCompany = results.find((r) => r.detectedCompany)?.detectedCompany || null;
 
     res.json({
@@ -311,6 +406,10 @@ uploadRouter.post('/parse', upload.single('file'), async (req, res, next) => {
         totalErrors,
         isAgreement,
         detectedCompany,
+        agentNumber: agreementAgentNumber,
+        agentTaxId: agreementAgentTaxId,
+        skippedDueMismatch,
+        mismatchWarning,
       },
     });
   } catch (err) {

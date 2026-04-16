@@ -4,6 +4,8 @@ import { useDataStore, type UploadRow } from '../store/dataStore';
 
 interface ParsedRecord {
   reportType: string;
+  agentNumber: string | null;
+  agentName: string | null;
   processingMonth: string;
   branch: string;
   subBranch: string;
@@ -30,6 +32,18 @@ interface ParseResult {
   sheetName: string;
   records: ParsedRecord[];
   errors: { row: number; message: string }[];
+  detectedCompany: string | null;
+}
+
+interface ParseMeta {
+  detectedCompany: string | null;
+  agentNumber: string | null;
+  agentTaxId: string | null;
+  totalRecords: number;
+  totalErrors: number;
+  isAgreement: boolean;
+  skippedDueMismatch: number;
+  mismatchWarning: string | null;
 }
 
 const REPORT_TYPE_LABELS: Record<string, string> = {
@@ -67,6 +81,7 @@ export default function CommissionUploadPage() {
   const [selectedReportType, setSelectedReportType] = useState('');
   const [parsing, setParsing] = useState(false);
   const [parseResults, setParseResults] = useState<ParseResult[] | null>(null);
+  const [parseMeta, setParseMeta] = useState<ParseMeta | null>(null);
   const [parseError, setParseError] = useState<string | null>(null);
   const [companyRequired, setCompanyRequired] = useState(false);
   const [pendingFile, setPendingFile] = useState<File | null>(null);
@@ -135,12 +150,13 @@ export default function CommissionUploadPage() {
     setParsing(true);
     setParseError(null);
     setParseResults(null);
+    setParseMeta(null);
 
     try {
       const formData = new FormData();
       formData.append('file', file);
 
-      const token = localStorage.getItem('payagent-token');
+      const token = localStorage.getItem('agora-token');
       const response = await fetch('/api/v1/uploads/parse', {
         method: 'POST',
         headers: token ? { Authorization: `Bearer ${token}` } : {},
@@ -166,8 +182,25 @@ export default function CommissionUploadPage() {
       setParseResults(results);
 
       const totalRecords = results.reduce((s: number, r: ParseResult) => s + r.records.length, 0);
-      const detectedCompany = json.meta?.detectedCompany as string | null;
+      const detectedCompany = (json.meta?.detectedCompany as string | null)
+        ?? results.find((r) => r.detectedCompany)?.detectedCompany ?? null;
       const company = selectedCompany || detectedCompany || 'זוהה אוטומטית';
+
+      // Extract agent number from first record that has it
+      const firstAgentNumber = results
+        .flatMap((r) => r.records)
+        .find((rec) => rec.agentNumber)?.agentNumber ?? json.meta?.agentNumber ?? null;
+
+      setParseMeta({
+        detectedCompany: company,
+        agentNumber: firstAgentNumber,
+        agentTaxId: json.meta?.agentTaxId ?? null,
+        totalRecords,
+        totalErrors: results.reduce((s: number, r: ParseResult) => s + r.errors.length, 0),
+        isAgreement: json.meta?.isAgreement ?? false,
+        skippedDueMismatch: json.meta?.skippedDueMismatch ?? 0,
+        mismatchWarning: json.meta?.mismatchWarning ?? null,
+      });
 
       // Auto-set company if detected and not already selected
       if (detectedCompany && !selectedCompany) {
@@ -209,7 +242,7 @@ export default function CommissionUploadPage() {
     const url = URL.createObjectURL(blob);
     const a = document.createElement('a');
     a.href = url;
-    a.download = 'payagent_sample_commissions.csv';
+    a.download = 'agora_sample_commissions.csv';
     a.click();
     URL.revokeObjectURL(url);
   }
@@ -400,6 +433,72 @@ export default function CommissionUploadPage() {
                   {parseResults.reduce((s, r) => s + r.records.length, 0).toLocaleString()} רשומות
                 </h3>
               </div>
+
+              {/* Summary card */}
+              {parseMeta && (
+                <div className="bg-secondary-container/30 border border-secondary/20 rounded-xl p-5">
+                  <div className="flex items-center gap-2 mb-4">
+                    <Icon name="badge" className="text-secondary text-lg" />
+                    <span className="font-bold text-on-surface text-sm">
+                      {parseMeta.isAgreement ? 'פרטי הסכם עמלות' : 'פרטי דוח עמלות'}
+                    </span>
+                  </div>
+                  <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
+                    <div className="space-y-1">
+                      <p className="text-[10px] uppercase tracking-widest text-on-surface-variant font-headline">חברת ביטוח</p>
+                      <p className="font-bold text-on-surface">{parseMeta.detectedCompany || '—'}</p>
+                    </div>
+                    <div className="space-y-1">
+                      <p className="text-[10px] uppercase tracking-widest text-on-surface-variant font-headline">מספר סוכן</p>
+                      <p className="font-bold text-on-surface font-mono">{parseMeta.agentNumber || '—'}</p>
+                    </div>
+                    <div className="space-y-1">
+                      <p className="text-[10px] uppercase tracking-widest text-on-surface-variant font-headline">ת.ז. סוכן</p>
+                      <p className="font-bold text-on-surface font-mono">{parseMeta.agentTaxId || '—'}</p>
+                    </div>
+                    <div className="space-y-1">
+                      <p className="text-[10px] uppercase tracking-widest text-on-surface-variant font-headline">סה"כ רשומות</p>
+                      <p className="font-bold text-on-surface">{parseMeta.totalRecords.toLocaleString()}</p>
+                    </div>
+                    <div className="space-y-1">
+                      <p className="text-[10px] uppercase tracking-widest text-on-surface-variant font-headline">סה"כ עמלות</p>
+                      <p className="font-bold text-secondary text-lg">
+                        ₪{parseResults
+                          .flatMap((r) => r.records)
+                          .reduce((s, rec) => s + (rec.amountWithVat || rec.commission || rec.paymentAmount || 0), 0)
+                          .toLocaleString('he-IL', { maximumFractionDigits: 2 })}
+                      </p>
+                    </div>
+                    <div className="space-y-1">
+                      <p className="text-[10px] uppercase tracking-widest text-on-surface-variant font-headline">תקופה</p>
+                      <p className="font-bold text-on-surface">
+                        {parseResults.flatMap((r) => r.records).find((rec) => rec.processingMonth)?.processingMonth || '—'}
+                      </p>
+                    </div>
+                    <div className="space-y-1">
+                      <p className="text-[10px] uppercase tracking-widest text-on-surface-variant font-headline">שגיאות</p>
+                      <p className={`font-bold ${parseMeta.totalErrors > 0 ? 'text-error' : 'text-secondary'}`}>
+                        {parseMeta.totalErrors > 0 ? parseMeta.totalErrors : '✓ ללא שגיאות'}
+                      </p>
+                    </div>
+                    <div className="space-y-1">
+                      <p className="text-[10px] uppercase tracking-widest text-on-surface-variant font-headline">סוג קובץ</p>
+                      <p className="font-bold text-on-surface">{parseMeta.isAgreement ? 'הסכם עמלות' : 'דוח עמלות'}</p>
+                    </div>
+                  </div>
+                </div>
+              )}
+
+              {/* Mismatch warning */}
+              {parseMeta?.mismatchWarning && (
+                <div className="bg-tertiary-container/40 border border-tertiary/30 rounded-lg px-5 py-4 flex items-start gap-3">
+                  <Icon name="warning" className="text-tertiary mt-0.5 shrink-0" />
+                  <div>
+                    <p className="font-bold text-on-surface text-sm mb-0.5">שורות לא נכללו בחישוב</p>
+                    <p className="text-sm text-on-surface-variant">{parseMeta.mismatchWarning}</p>
+                  </div>
+                </div>
+              )}
 
               {parseResults.map((result) => (
                 <div key={result.sheetName} className="bg-surface-container-lowest rounded-lg overflow-hidden">

@@ -314,12 +314,27 @@ export async function getUploadById(id: string): Promise<UploadRecord | null> {
 
 // ============ Agent Writes ============
 
-export async function findAgentDuplicate(agentId: string, email: string, licenseNumber: string): Promise<boolean> {
+export async function findAgentDuplicate(
+  agentId: string,
+  email: string,
+  licenseNumber: string,
+  phone: string,
+  taxId: string,
+): Promise<{ isDuplicate: boolean; field: string | null }> {
   const [rows] = await pool.query<RowDataPacket[]>(
-    'SELECT 1 FROM agents WHERE deleted_at IS NULL AND (agent_id = ? OR email = ? OR license_number = ?) LIMIT 1',
-    [agentId, email, licenseNumber],
+    `SELECT
+       MAX(CASE WHEN agent_id = ? THEN 'agent_id' END) AS by_agent_id,
+       MAX(CASE WHEN email = ? THEN 'email' END) AS by_email,
+       MAX(CASE WHEN license_number = ? THEN 'license_number' END) AS by_license,
+       MAX(CASE WHEN phone = ? AND phone != '' THEN 'phone' END) AS by_phone,
+       MAX(CASE WHEN tax_id = ? THEN 'tax_id' END) AS by_tax_id
+     FROM agents WHERE deleted_at IS NULL
+       AND (agent_id = ? OR email = ? OR license_number = ? OR (phone = ? AND phone != '') OR tax_id = ?)`,
+    [agentId, email, licenseNumber, phone, taxId, agentId, email, licenseNumber, phone, taxId],
   );
-  return rows.length > 0;
+  const row = rows[0];
+  const field = row.by_agent_id ?? row.by_email ?? row.by_license ?? row.by_phone ?? row.by_tax_id ?? null;
+  return { isDuplicate: field !== null, field };
 }
 
 export async function createAgent(id: string, data: {
@@ -762,5 +777,99 @@ export async function getCommissionRules(
     ratePct: r.rate_pct != null ? Number(r.rate_pct) : null,
     description: r.description,
     isActive: Boolean(r.is_active),
+  }));
+}
+
+// ============ Agent Company Numbers — מיפוי ת.ז. ↔ מספר סוכן בחברה ============
+
+export interface AgentCompanyNumber {
+  id: string;
+  agentId: string;
+  insuranceCompanyId: string;
+  insuranceCompanyName: string;
+  companyAgentNumber: string;
+  createdAt: string;
+  updatedAt: string;
+}
+
+/**
+ * Save or update the agent number for a specific agent at a specific company.
+ * Uses INSERT ... ON DUPLICATE KEY UPDATE for idempotency.
+ */
+export async function upsertAgentCompanyNumber(
+  agentId: string,
+  insuranceCompanyId: string,
+  companyAgentNumber: string,
+): Promise<void> {
+  const id = (await import('uuid')).v4();
+  await pool.query(
+    `INSERT INTO agent_company_numbers
+       (id, agent_id, insurance_company_id, company_agent_number)
+     VALUES (?, ?, ?, ?)
+     ON DUPLICATE KEY UPDATE
+       company_agent_number = VALUES(company_agent_number),
+       updated_at = CURRENT_TIMESTAMP`,
+    [id, agentId, insuranceCompanyId, companyAgentNumber],
+  );
+}
+
+/**
+ * Get the registered agent number for a specific agent at a specific company.
+ * Returns null if no mapping exists yet.
+ */
+export async function getRegisteredAgentNumber(
+  agentId: string,
+  insuranceCompanyId: string,
+): Promise<string | null> {
+  const [rows] = await pool.query<RowDataPacket[]>(
+    'SELECT company_agent_number FROM agent_company_numbers WHERE agent_id = ? AND insurance_company_id = ? LIMIT 1',
+    [agentId, insuranceCompanyId],
+  );
+  return rows.length > 0 ? (rows[0].company_agent_number as string) : null;
+}
+
+/**
+ * Resolve which agent owns a given agent number at a specific company.
+ * Used to validate that an uploaded file belongs to the authenticated agent.
+ */
+export async function getAgentByCompanyNumber(
+  insuranceCompanyId: string,
+  companyAgentNumber: string,
+): Promise<{ agentId: string; taxId: string } | null> {
+  const [rows] = await pool.query<RowDataPacket[]>(
+    `SELECT acn.agent_id, a.agent_id AS tax_id
+     FROM agent_company_numbers acn
+     JOIN agents a ON a.id = acn.agent_id
+     WHERE acn.insurance_company_id = ?
+       AND acn.company_agent_number = ?
+     LIMIT 1`,
+    [insuranceCompanyId, companyAgentNumber],
+  );
+  if (rows.length === 0) return null;
+  return { agentId: rows[0].agent_id as string, taxId: rows[0].tax_id as string };
+}
+
+/**
+ * Get all company numbers registered for a given agent.
+ */
+export async function getAgentCompanyNumbers(agentId: string): Promise<AgentCompanyNumber[]> {
+  const [rows] = await pool.query<RowDataPacket[]>(
+    `SELECT acn.id, acn.agent_id, acn.insurance_company_id,
+            ic.name AS insurance_company_name,
+            acn.company_agent_number, acn.created_at, acn.updated_at
+     FROM agent_company_numbers acn
+     JOIN insurance_companies ic ON ic.id = acn.insurance_company_id
+     WHERE acn.agent_id = ?
+     ORDER BY ic.name`,
+    [agentId],
+  );
+  return rows.map((r) => ({
+    id: r.id as string,
+    agentId: r.agent_id as string,
+    insuranceCompanyId: r.insurance_company_id as string,
+    insuranceCompanyName: r.insurance_company_name as string,
+    companyAgentNumber: r.company_agent_number as string,
+    createdAt: r.created_at as string,
+    updatedAt: r.updated_at as string,
   }));
 }

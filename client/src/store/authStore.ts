@@ -71,8 +71,8 @@ export const useAuthStore = create<AuthState>()(
           if (!res.data) throw new Error('תגובה ריקה מהשרת');
 
           const { token, agent } = res.data;
-          localStorage.setItem('payagent-token', token);
-          localStorage.removeItem('payagent-data');
+          localStorage.setItem('agora-token', token);
+          localStorage.removeItem('agora-data');
 
           // If server reports user has sales data, skip onboarding
           const hasSalesData = (agent as Record<string, unknown>).hasSalesData === true;
@@ -111,9 +111,9 @@ export const useAuthStore = create<AuthState>()(
           if (!res.data) throw new Error('תגובה ריקה מהשרת');
 
           const { token, agent } = res.data;
-          localStorage.setItem('payagent-token', token);
+          localStorage.setItem('agora-token', token);
           // Clear any leftover data from previous sessions (demo or other user)
-          localStorage.removeItem('payagent-data');
+          localStorage.removeItem('agora-data');
 
           set({
             isAuthenticated: true,
@@ -154,15 +154,15 @@ export const useAuthStore = create<AuthState>()(
       },
 
       logout: () => {
-        localStorage.removeItem('payagent-token');
-        localStorage.removeItem('payagent-data');
+        localStorage.removeItem('agora-token');
+        localStorage.removeItem('agora-data');
         set({ isAuthenticated: false, userMode: null, profile: null, token: null, error: null });
       },
 
       clearError: () => set({ error: null }),
     }),
     {
-      name: 'payagent-auth',
+      name: 'agora-auth',
       partialize: (state) => ({
         isAuthenticated: state.isAuthenticated,
         userMode: state.userMode,

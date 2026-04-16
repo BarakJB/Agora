@@ -12,6 +12,8 @@ export interface AgreementRate {
 
 export interface ParsedAgreement {
   agentName: string;
+  agentTaxId: string | null;      // ת.ז. סוכן
+  agentNumber: string | null;     // מספר סוכן בחברה
   rates: AgreementRate[];
 }
 
@@ -40,6 +42,67 @@ function detectAgreementSheet(sheetNames: string[]): string | null {
     }
   }
   return null;
+}
+
+/**
+ * Scan the first 8 rows for ת.ז. and מספר סוכן.
+ * Handles both label-value pairs in adjacent cells and "label: value" in a single cell.
+ */
+function extractAgentIdentifiers(
+  allRows: unknown[][],
+): { agentTaxId: string | null; agentNumber: string | null } {
+  let agentTaxId: string | null = null;
+  let agentNumber: string | null = null;
+
+  const TAX_ID_LABELS = ['ת.ז', 'תעודת זהות', 'ת"ז', 'מספר זהות'];
+  const AGENT_NUM_LABELS = ['מספר סוכן', 'מס סוכן', 'מס\' סוכן', 'קוד סוכן', 'agent number'];
+  const TAX_ID_REGEX = /\b\d{8,9}\b/;
+  const AGENT_NUM_REGEX = /\b\d{4,10}\b/;
+
+  const scanLimit = Math.min(allRows.length, 8);
+
+  for (let i = 0; i < scanLimit; i++) {
+    const row = allRows[i];
+    for (let col = 0; col < row.length; col++) {
+      const cellStr = toStr(row[col]);
+      if (!cellStr) continue;
+
+      const lower = cellStr.toLowerCase();
+
+      // Check if this cell is a label — value is in next cell
+      const isTaxLabel = TAX_ID_LABELS.some((l) => lower.includes(l.toLowerCase()));
+      const isAgentNumLabel = AGENT_NUM_LABELS.some((l) => lower.includes(l.toLowerCase()));
+
+      if (isTaxLabel && !agentTaxId) {
+        // Try inline "ת.ז: 123456789"
+        const inlineMatch = cellStr.match(TAX_ID_REGEX);
+        if (inlineMatch) {
+          agentTaxId = inlineMatch[0];
+        } else {
+          // Try adjacent cell
+          const nextVal = toStr(row[col + 1]);
+          if (nextVal && TAX_ID_REGEX.test(nextVal)) {
+            agentTaxId = nextVal.match(TAX_ID_REGEX)![0];
+          }
+        }
+      }
+
+      if (isAgentNumLabel && !agentNumber) {
+        const inlineMatch = cellStr.match(AGENT_NUM_REGEX);
+        if (inlineMatch) {
+          agentNumber = inlineMatch[0];
+        } else {
+          const nextVal = toStr(row[col + 1]);
+          if (nextVal && AGENT_NUM_REGEX.test(nextVal)) {
+            agentNumber = nextVal.match(AGENT_NUM_REGEX)![0];
+          }
+        }
+      }
+    }
+    if (agentTaxId && agentNumber) break;
+  }
+
+  return { agentTaxId, agentNumber };
 }
 
 function extractAgentName(sheet: XLSX.WorkSheet): string {
@@ -104,6 +167,8 @@ export function parseAgreementFile(buffer: Buffer): ParsedAgreement {
     header: 1,
     defval: null,
   });
+
+  const { agentTaxId, agentNumber } = extractAgentIdentifiers(allRows);
 
   if (allRows.length < 3) {
     throw new Error('הגיליון מכיל פחות מ-3 שורות — לא ניתן לפרסר');
@@ -196,5 +261,5 @@ export function parseAgreementFile(buffer: Buffer): ParsedAgreement {
     }
   }
 
-  return { agentName, rates };
+  return { agentName, agentTaxId, agentNumber, rates };
 }

@@ -34,9 +34,19 @@ authRouter.post(
       const licenseNumber = body.licenseNumber || agentId;
       const taxId = body.taxId || agentId;
 
-      const exists = await findAgentDuplicate(agentId, body.email, licenseNumber);
-      if (exists) {
-        res.status(409).json({ data: null, error: 'סוכן עם אימייל או מזהה זה כבר קיים במערכת', meta: null });
+      const { isDuplicate, field } = await findAgentDuplicate(
+        agentId, body.email, licenseNumber, body.phone ?? '', taxId,
+      );
+      if (isDuplicate) {
+        const fieldMessages: Record<string, string> = {
+          email: 'כתובת האימייל כבר רשומה במערכת',
+          phone: 'מספר הטלפון כבר רשום במערכת',
+          tax_id: 'ת.ז. כבר רשומה במערכת',
+          agent_id: 'מספר סוכן כבר קיים במערכת',
+          license_number: 'מספר רישיון כבר קיים במערכת',
+        };
+        const msg = field ? (fieldMessages[field] ?? 'סוכן כבר קיים במערכת') : 'סוכן כבר קיים במערכת';
+        res.status(409).json({ data: null, error: msg, meta: null });
         return;
       }
 

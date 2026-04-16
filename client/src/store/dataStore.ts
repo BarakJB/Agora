@@ -479,7 +479,7 @@ export const useDataStore = create<DataState>()(
       },
     }),
     {
-      name: 'payagent-data',
+      name: 'agora-data',
       // Don't persist commissions — they are loaded from DB on mount
       // Only persist uploads list for display purposes
       partialize: (state) => ({

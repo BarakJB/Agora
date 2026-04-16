@@ -102,11 +102,11 @@ export default function TopBar({ title, onMenuToggle }: TopBarProps) {
         <div className="relative w-full max-w-96 hidden sm:block">
           <Icon
             name="search"
-            className="absolute end-3 top-1/2 -translate-y-1/2 text-on-surface-variant"
+            className="absolute start-3 top-1/2 -translate-y-1/2 text-on-surface-variant"
             size="sm"
           />
           <input
-            className="w-full bg-surface-container-low border-none rounded-lg pe-10 text-sm focus:ring-2 focus:ring-primary/20"
+            className="w-full bg-surface-container-low border-none rounded-lg ps-10 text-sm focus:ring-2 focus:ring-primary/20"
             placeholder="חפש פוליסות, לקוחות או נתונים..."
             type="text"
             aria-label="חיפוש"

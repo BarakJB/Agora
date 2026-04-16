@@ -64,7 +64,7 @@ export default function LoginPage() {
         <div className="absolute inset-0 bg-gradient-to-br from-primary to-primary-container opacity-90 z-10" />
         <div className="relative z-20 flex flex-col justify-between p-16 w-full text-on-primary">
           <div>
-            <h1 className="text-4xl font-headline font-black tracking-tighter uppercase mb-2">PayAgent</h1>
+            <h1 className="text-4xl font-headline font-black tracking-tighter uppercase mb-2">Agora</h1>
             <div className="h-1 w-12 bg-secondary rounded-full" />
           </div>
           <div className="max-w-md">

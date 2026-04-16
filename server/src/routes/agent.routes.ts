@@ -52,8 +52,10 @@ agentRouter.post(
     try {
       const body = req.body as CreateAgentBody;
 
-      const exists = await findAgentDuplicate(body.agentId, body.email, body.licenseNumber);
-      if (exists) {
+      const { isDuplicate } = await findAgentDuplicate(
+        body.agentId, body.email, body.licenseNumber, body.phone ?? '', body.taxId ?? '',
+      );
+      if (isDuplicate) {
         res.status(409).json({ data: null, error: 'Agent with this agentId, email, or licenseNumber already exists', meta: null });
         return;
       }

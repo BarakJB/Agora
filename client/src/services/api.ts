@@ -23,7 +23,7 @@ class ApiError extends Error {
 }
 
 async function request<T>(path: string, options: RequestInit = {}): Promise<ApiResponse<T>> {
-  const token = localStorage.getItem('payagent-token');
+  const token = localStorage.getItem('agora-token');
 
   const headers: Record<string, string> = {
     'Content-Type': 'application/json',

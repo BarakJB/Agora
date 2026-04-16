@@ -1098,7 +1098,7 @@ function UploadModal({ open, mode, onComplete, onClose }: {
     setError(null);
 
     try {
-      const token = localStorage.getItem('payagent-token');
+      const token = localStorage.getItem('agora-token');
       const fd = new FormData();
       fd.append('file', file);
 

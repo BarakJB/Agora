@@ -186,7 +186,7 @@ export default function OnboardingPage() {
       const formData = new FormData();
       formData.append('file', file);
 
-      const token = localStorage.getItem('payagent-token');
+      const token = localStorage.getItem('agora-token');
       const response = await fetch('/api/v1/uploads/parse', {
         method: 'POST',
         headers: token ? { Authorization: `Bearer ${token}` } : {},
@@ -394,7 +394,7 @@ export default function OnboardingPage() {
         {/* Bottom logo */}
         <div className="fixed bottom-4 left-4 flex items-center gap-2 text-on-surface-variant/40">
           <Icon name="account_balance_wallet" size="sm" />
-          <span className="text-xs font-headline font-bold">PayAgent</span>
+          <span className="text-xs font-headline font-bold">Agora</span>
         </div>
       </div>
     </div>
