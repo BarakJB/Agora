@@ -14,6 +14,7 @@ const upload_schemas_js_1 = require("../validators/upload.schemas.js");
 const excel_parser_service_js_1 = require("../services/excel-parser.service.js");
 const agreement_parser_service_js_1 = require("../services/agreement-parser.service.js");
 const menora_csv_parser_service_js_1 = require("../services/menora-csv-parser.service.js");
+const pdf_agreement_parser_service_js_1 = require("../services/pdf-agreement-parser.service.js");
 const upload = (0, multer_1.default)({ storage: multer_1.default.memoryStorage(), limits: { fileSize: 10 * 1024 * 1024 } });
 exports.uploadRouter = (0, express_1.Router)();
 // GET /api/v1/uploads/agent-numbers/:agentId — all company numbers for an agent
@@ -148,9 +149,37 @@ exports.uploadRouter.post('/parse', upload.single('file'), async (req, res, next
         const isZip = ext.endsWith('.zip');
         const isExcel = ext.endsWith('.xls') || ext.endsWith('.xlsx');
         const isCsv = ext.endsWith('.csv');
-        if (!isExcel && !isZip && !isCsv) {
-            res.status(400).json({ data: null, error: 'Supported formats: XLS, XLSX, ZIP, CSV', meta: null });
+        const isPdfFile = ext.endsWith('.pdf');
+        if (!isExcel && !isZip && !isCsv && !isPdfFile) {
+            res.status(400).json({ data: null, error: 'Supported formats: XLS, XLSX, ZIP, CSV, PDF', meta: null });
             return;
+        }
+        // Handle PDF files (commission agreement contracts)
+        if (isPdfFile) {
+            try {
+                const result = await (0, pdf_agreement_parser_service_js_1.parseAgreementPdf)(file.buffer);
+                res.json({
+                    data: result.rates,
+                    error: null,
+                    meta: {
+                        fileName: file.originalname,
+                        fileSize: file.size,
+                        isAgreement: true,
+                        detectedCompany: result.company,
+                        agentName: result.agentName,
+                        agentId: result.agentId,
+                        validFrom: result.validFrom,
+                        validTo: result.validTo,
+                        totalRates: result.rates.length,
+                    },
+                });
+                return;
+            }
+            catch (err) {
+                const msg = err instanceof Error ? err.message : 'Failed to parse PDF file';
+                res.status(400).json({ data: null, error: msg, meta: null });
+                return;
+            }
         }
         // Handle CSV files (Menora format — Windows-1255 encoded)
         if (isCsv) {

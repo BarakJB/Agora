@@ -19,6 +19,7 @@ import { uploadListQuerySchema, type UploadListQuery } from '../validators/uploa
 import { parseExcelBuffer } from '../services/excel-parser.service.js';
 import { parseAgreementFile } from '../services/agreement-parser.service.js';
 import { parseMenoraZip, isMenoraZip, parseMenoraCsvBuffer, isMenoraCsvFileName } from '../services/menora-csv-parser.service.js';
+import { parseAgreementPdf, isPdf } from '../services/pdf-agreement-parser.service.js';
 
 const upload = multer({ storage: multer.memoryStorage(), limits: { fileSize: 10 * 1024 * 1024 } });
 
@@ -184,10 +185,38 @@ uploadRouter.post('/parse', upload.single('file'), async (req, res, next) => {
     const isZip = ext.endsWith('.zip');
     const isExcel = ext.endsWith('.xls') || ext.endsWith('.xlsx');
     const isCsv = ext.endsWith('.csv');
+    const isPdfFile = ext.endsWith('.pdf');
 
-    if (!isExcel && !isZip && !isCsv) {
-      res.status(400).json({ data: null, error: 'Supported formats: XLS, XLSX, ZIP, CSV', meta: null });
+    if (!isExcel && !isZip && !isCsv && !isPdfFile) {
+      res.status(400).json({ data: null, error: 'Supported formats: XLS, XLSX, ZIP, CSV, PDF', meta: null });
       return;
+    }
+
+    // Handle PDF files (commission agreement contracts)
+    if (isPdfFile) {
+      try {
+        const result = await parseAgreementPdf(file.buffer);
+        res.json({
+          data: result.rates,
+          error: null,
+          meta: {
+            fileName: file.originalname,
+            fileSize: file.size,
+            isAgreement: true,
+            detectedCompany: result.company,
+            agentName: result.agentName,
+            agentId: result.agentId,
+            validFrom: result.validFrom,
+            validTo: result.validTo,
+            totalRates: result.rates.length,
+          },
+        });
+        return;
+      } catch (err) {
+        const msg = err instanceof Error ? err.message : 'Failed to parse PDF file';
+        res.status(400).json({ data: null, error: msg, meta: null });
+        return;
+      }
     }
 
     // Handle CSV files (Menora format — Windows-1255 encoded)

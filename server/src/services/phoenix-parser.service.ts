@@ -73,30 +73,42 @@ function isEmptyRow(row: Record<string, unknown>): boolean {
 
 /**
  * Find the header row index in a Phoenix Excel sheet.
- * Phoenix sheets have metadata rows 0-5, headers at row 6.
- * We look for "חודש תשלום" as the first column.
+ * Phoenix "full" format has metadata rows 0-5, headers at row 6 with "חודש תשלום".
+ * Phoenix "short" format has headers at row 0 with "חודש עיבוד".
  */
-function findPhoenixHeaderRow(sheet: XLSX.Sheet): number {
+function findPhoenixHeaderRow(sheet: XLSX.Sheet): { row: number; variant: 'full' | 'short' } | null {
   const range = XLSX.utils.decode_range(sheet['!ref'] || 'A1');
   for (let r = 0; r <= Math.min(range.e.r, 15); r++) {
     const cell = sheet[XLSX.utils.encode_cell({ r, c: 0 })];
-    if (cell && String(cell.v).trim() === 'חודש תשלום') return r;
+    if (!cell) continue;
+    const val = String(cell.v).trim();
+    if (val === 'חודש תשלום') return { row: r, variant: 'full' };
+    if (val === 'חודש עיבוד') return { row: r, variant: 'short' };
   }
-  return -1;
+  return null;
+}
+
+/**
+ * Map ענף (branch) to report type for the "short" format.
+ * בריאות/חיים = סיכונים (risk/life), פנסיה = נפרעים פנסיוני
+ */
+function mapBranchToCategory(branch: string | null): 'סיכונים' | 'נפרעים' {
+  if (!branch) return 'נפרעים';
+  const b = branch.trim();
+  if (b === 'בריאות' || b === 'חיים') return 'סיכונים';
+  return 'נפרעים';
 }
 
 /**
  * Detect if a workbook is in Phoenix format.
- * Phoenix has "חודש תשלום" as header in "דוח נפרעים" sheet.
  */
 export function isPhoenixFormat(workbook: XLSX.WorkBook): boolean {
   for (const name of workbook.SheetNames) {
     const trimmed = name.trim();
     if (trimmed === 'דוח נפרעים' || trimmed === 'דוח עמלות היקף') {
       const sheet = workbook.Sheets[name];
-      const headerRow = findPhoenixHeaderRow(sheet);
-      if (headerRow >= 0) return true;
-      // For "דוח עמלות היקף", check for its specific header
+      const header = findPhoenixHeaderRow(sheet);
+      if (header) return true;
       if (trimmed === 'דוח עמלות היקף') return true;
     }
   }
@@ -104,30 +116,17 @@ export function isPhoenixFormat(workbook: XLSX.WorkBook): boolean {
 }
 
 /**
- * Parse Phoenix nifraim (דוח נפרעים) sheet.
+ * Parse Phoenix nifraim "full" format (דוח נפרעים with חודש תשלום header at row 6+).
  */
-function parsePhoenixNifraim(
+function parsePhoenixNifraimFull(
   sheet: XLSX.Sheet,
   sheetName: string,
+  headerRow: number,
 ): ParseResult {
   const records: ParsedCommissionRecord[] = [];
   const errors: ParseError[] = [];
   let skipped = 0;
 
-  const headerRow = findPhoenixHeaderRow(sheet);
-  if (headerRow < 0) {
-    return {
-      reportType: 'nifraim',
-      sheetName,
-      records: [],
-      errors: [{ row: 0, column: null, message: 'Could not find header row' }],
-      totalRows: 0,
-      skippedRows: 0,
-      detectedCompany: 'הפניקס',
-    };
-  }
-
-  // Parse with range starting from header row
   const rows = XLSX.utils.sheet_to_json<Record<string, unknown>>(sheet, {
     defval: null,
     range: headerRow,
@@ -140,7 +139,6 @@ function parsePhoenixNifraim(
       continue;
     }
 
-    // Use "סה"כ לתשלום" (total payment) as the actual commission amount
     const paymentAmount = toNumber(row['סה"כ לתשלום']);
     const commission = toNumber(row['עמלה']);
     const actualAmount = paymentAmount ?? commission;
@@ -201,6 +199,113 @@ function parsePhoenixNifraim(
 }
 
 /**
+ * Parse Phoenix nifraim "short" format (headers at row 0 with חודש עיבוד).
+ * Columns: חודש עיבוד, ענף, סוג פוליסה, שם סוכן, מספר סוכן,
+ *          מספר מעסיק, מעסיק, שם מבוטח, ת.ז, מספר פוליסה,
+ *          חודש תפוקה, פרמיה, עמלה, דמי גביה, מקדמה,
+ *          יתרת מקדמה, סכום תשלום, אופי חו"ז, מקור זיכוי עמלה
+ *
+ * Branch mapping:
+ *   בריאות/חיים → סיכונים (risk/life insurance products)
+ *   פנסיה → נפרעים פנסיוני (pension recurring commissions)
+ */
+function parsePhoenixNifraimShort(
+  sheet: XLSX.Sheet,
+  sheetName: string,
+  headerRow: number,
+): ParseResult[] {
+  const rows = XLSX.utils.sheet_to_json<Record<string, unknown>>(sheet, {
+    defval: null,
+    range: headerRow,
+  });
+
+  // Group records by category (סיכונים vs נפרעים)
+  const grouped: Record<string, { records: ParsedCommissionRecord[]; errors: ParseError[]; skipped: number; total: number }> = {};
+
+  for (let i = 0; i < rows.length; i++) {
+    const row = rows[i];
+    if (isEmptyRow(row) || isSummaryRow(row)) continue;
+
+    const branch = toStr(row['ענף']);
+    const category = mapBranchToCategory(branch);
+
+    if (!grouped[category]) {
+      grouped[category] = { records: [], errors: [], skipped: 0, total: 0 };
+    }
+    grouped[category].total++;
+
+    const paymentAmount = toNumber(row['סכום תשלום']);
+    const commission = toNumber(row['עמלה']);
+    const actualAmount = paymentAmount ?? commission;
+    if (actualAmount === null) {
+      grouped[category].skipped++;
+      continue;
+    }
+
+    const subBranch = toStr(row['סוג פוליסה']);
+
+    try {
+      grouped[category].records.push({
+        id: uuid(),
+        reportType: 'nifraim',
+        agentNumber: toStr(row['מספר סוכן']),
+        agentName: toStr(row['שם סוכן']),
+        policyNumber: toStr(row['מספר פוליסה']),
+        branch: branch,
+        subBranch: subBranch,
+        productName: subBranch || branch,
+        premiumBase: toNumber(row['פרמיה']),
+        amount: actualAmount,
+        rate: null,
+        collectionFee: toNumber(row['דמי גביה']),
+        advanceAmount: toNumber(row['מקדמה']),
+        advanceBalance: toNumber(row['יתרת מקדמה']),
+        amountBeforeVat: null,
+        amountWithVat: null,
+        accumulationBalance: null,
+        managementFeePct: null,
+        managementFeeAmount: null,
+        transactionType: toStr(row['אופי חו"ז']),
+        commissionSource: toStr(row['מקור זיכוי עמלה']),
+        employerName: toStr(row['מעסיק']),
+        employerId: toStr(row['מספר מעסיק']),
+        insuredName: toStr(row['שם מבוטח']),
+        insuredId: toStr(row['ת.ז']),
+        productionMonth: excelDateToMonth(row['חודש תפוקה']),
+        processingMonth: excelDateToMonth(row['חודש עיבוד']),
+        fundType: null,
+        planType: null,
+        paymentAmount: paymentAmount,
+        contractNumber: null,
+        rawRow: row,
+      });
+    } catch (err) {
+      grouped[category].errors.push({
+        row: headerRow + i + 2,
+        column: null,
+        message: `Failed to parse row: ${(err as Error).message}`,
+      });
+    }
+  }
+
+  // Return separate ParseResult per category
+  const results: ParseResult[] = [];
+  for (const [category, data] of Object.entries(grouped)) {
+    results.push({
+      reportType: 'nifraim',
+      sheetName: `${sheetName} — ${category}`,
+      records: data.records,
+      errors: data.errors,
+      totalRows: data.total,
+      skippedRows: data.skipped,
+      detectedCompany: 'הפניקס',
+    });
+  }
+
+  return results;
+}
+
+/**
  * Parse Phoenix hekef (דוח עמלות היקף) sheet.
  */
 function parsePhoenixHekef(
@@ -211,8 +316,8 @@ function parsePhoenixHekef(
   const errors: ParseError[] = [];
   let skipped = 0;
 
-  const headerRow = findPhoenixHeaderRow(sheet);
-  if (headerRow < 0) {
+  const header = findPhoenixHeaderRow(sheet);
+  if (!header) {
     return {
       reportType: 'hekef',
       sheetName,
@@ -223,6 +328,7 @@ function parsePhoenixHekef(
       detectedCompany: 'הפניקס',
     };
   }
+  const headerRow = header.row;
 
   const rows = XLSX.utils.sheet_to_json<Record<string, unknown>>(sheet, {
     defval: null,
@@ -297,6 +403,8 @@ function parsePhoenixHekef(
 
 /**
  * Parse a Phoenix workbook. Returns results for all detected sheets.
+ * Supports both "full" format (metadata + headers at row 6) and
+ * "short" format (headers at row 0 with חודש עיבוד).
  */
 export function parsePhoenixWorkbook(workbook: XLSX.WorkBook): ParseResult[] {
   const results: ParseResult[] = [];
@@ -306,7 +414,16 @@ export function parsePhoenixWorkbook(workbook: XLSX.WorkBook): ParseResult[] {
     const sheet = workbook.Sheets[sheetName];
 
     if (trimmed === 'דוח נפרעים') {
-      results.push(parsePhoenixNifraim(sheet, trimmed));
+      const header = findPhoenixHeaderRow(sheet);
+      if (!header) continue;
+
+      if (header.variant === 'short') {
+        // Short format: split by ענף into סיכונים/נפרעים
+        results.push(...parsePhoenixNifraimShort(sheet, trimmed, header.row));
+      } else {
+        // Full format: standard nifraim parsing
+        results.push(parsePhoenixNifraimFull(sheet, trimmed, header.row));
+      }
     } else if (trimmed === 'דוח עמלות היקף') {
       results.push(parsePhoenixHekef(sheet, trimmed));
     }
