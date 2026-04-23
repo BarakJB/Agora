@@ -46,6 +46,28 @@ interface ParseMeta {
   mismatchWarning: string | null;
 }
 
+interface AgreementRate {
+  company: string;
+  agreementId: string | null;
+  agreementType: string;
+  product: string;
+  commissionType: string;
+  rate: number;
+  yearRange: string | null;
+  isBookCommission: boolean;
+  notes: string | null;
+}
+
+interface AgreementData {
+  rates: AgreementRate[];
+  detectedCompany: string | null;
+  agentName: string | null;
+  agentId: string | null;
+  validFrom: string | null;
+  validTo: string | null;
+  fileName: string;
+}
+
 const REPORT_TYPE_LABELS: Record<string, string> = {
   nifraim: 'נפרעים — עמלות שוטפות על פרמיות',
   hekef: 'היקף / נפרעים — עמלות חד-פעמיות',
@@ -82,6 +104,7 @@ export default function CommissionUploadPage() {
   const [parseResults, setParseResults] = useState<ParseResult[] | null>(null);
   const [parseMeta, setParseMeta] = useState<ParseMeta | null>(null);
   const [parseError, setParseError] = useState<string | null>(null);
+  const [agreementData, setAgreementData] = useState<AgreementData | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   function handleDragOver(e: React.DragEvent) {
@@ -111,9 +134,10 @@ export default function CommissionUploadPage() {
     const isExcel = ext.endsWith('.xls') || ext.endsWith('.xlsx');
     const isCsv = ext.endsWith('.csv');
     const isZip = ext.endsWith('.zip');
+    const isPdf = ext.endsWith('.pdf');
 
-    if (!isExcel && !isCsv && !isZip) {
-      setParseError('יש להעלות קובץ מסוג XLS, XLSX, ZIP, או CSV בלבד');
+    if (!isExcel && !isCsv && !isZip && !isPdf) {
+      setParseError('יש להעלות קובץ מסוג XLS, XLSX, ZIP, CSV או PDF בלבד');
       return;
     }
 
@@ -125,6 +149,7 @@ export default function CommissionUploadPage() {
     setParseError(null);
     setParseResults(null);
     setParseMeta(null);
+    setAgreementData(null);
 
     try {
       const formData = new FormData();
@@ -148,6 +173,32 @@ export default function CommissionUploadPage() {
           date: new Date().toLocaleDateString('he-IL'),
           records: 0,
           status: 'error',
+        });
+        return;
+      }
+
+      if (json.meta?.isAgreement) {
+        const rates = (json.data as AgreementRate[]) ?? [];
+        const detectedCompany = json.meta?.detectedCompany ?? null;
+        setAgreementData({
+          rates,
+          detectedCompany,
+          agentName: json.meta?.agentName ?? null,
+          agentId: json.meta?.agentId ?? null,
+          validFrom: json.meta?.validFrom ?? null,
+          validTo: json.meta?.validTo ?? null,
+          fileName: file.name,
+        });
+        if (detectedCompany && !selectedCompany) {
+          setSelectedCompany(detectedCompany);
+        }
+        addUpload({
+          id: crypto.randomUUID(),
+          fileName: file.name,
+          company: detectedCompany || selectedCompany || 'זוהה אוטומטית',
+          date: new Date().toLocaleDateString('he-IL'),
+          records: rates.length,
+          status: rates.length > 0 ? 'completed' : 'error',
         });
         return;
       }
@@ -235,7 +286,7 @@ export default function CommissionUploadPage() {
               <input
                 ref={fileInputRef}
                 type="file"
-                accept=".csv,.xls,.xlsx,.zip"
+                accept=".csv,.xls,.xlsx,.zip,.pdf"
                 className="hidden"
                 onChange={handleFileSelect}
               />
@@ -265,7 +316,7 @@ export default function CommissionUploadPage() {
                     </div>
                     <h3 className="text-xl font-bold text-primary">גרור ושחרר קבצים כאן</h3>
                     <p className="text-on-surface-variant max-w-sm">
-                      תמיכה בקבצי <strong>XLS, XLSX</strong> (הראל, הפניקס, אנליסט), <strong>ZIP</strong> (מנורה) ו-<strong>CSV</strong>.
+                      תמיכה בקבצי <strong>XLS, XLSX</strong> (הראל, הפניקס, אנליסט), <strong>ZIP</strong> (מנורה), <strong>CSV</strong> ו-<strong>PDF</strong> (הסכמי עמלות).
                       המערכת מזהה אוטומטית את חברת הביטוח וסוג הדוח.
                     </p>
                     <div className="flex gap-3 mt-4">
@@ -273,6 +324,7 @@ export default function CommissionUploadPage() {
                       <span className="bg-primary-fixed text-primary text-xs font-bold px-3 py-1 rounded-full">.xlsx</span>
                       <span className="bg-primary-fixed text-primary text-xs font-bold px-3 py-1 rounded-full">.zip</span>
                       <span className="bg-surface-container-high text-on-surface-variant text-xs font-bold px-3 py-1 rounded-full">.csv</span>
+                      <span className="bg-primary-fixed text-primary text-xs font-bold px-3 py-1 rounded-full">.pdf</span>
                     </div>
                     <button
                       className="mt-4 bg-primary text-on-primary px-8 py-3 rounded-lg font-bold hover:shadow-lg transition-all"
@@ -295,6 +347,79 @@ export default function CommissionUploadPage() {
                 <p className="text-sm">{parseError}</p>
               </div>
             </div>
+          )}
+
+          {/* Agreement (PDF) Results */}
+          {agreementData && (
+            <section className="space-y-6">
+              <div className="flex items-center gap-3">
+                <Icon name="description" className="text-secondary" />
+                <h3 className="text-lg font-bold text-on-surface">
+                  זוהה הסכם עמלות — {agreementData.rates.length} תעריפים
+                </h3>
+              </div>
+
+              <div className="bg-secondary-container/30 border border-secondary/20 rounded-xl p-5">
+                <div className="flex items-center gap-2 mb-4">
+                  <Icon name="badge" className="text-secondary text-lg" />
+                  <span className="font-bold text-on-surface text-sm">פרטי הסכם עמלות</span>
+                </div>
+                <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
+                  <div className="space-y-1">
+                    <p className="text-[10px] uppercase tracking-widest text-on-surface-variant font-headline">חברת ביטוח</p>
+                    <p className="font-bold text-on-surface">{agreementData.detectedCompany || '—'}</p>
+                  </div>
+                  <div className="space-y-1">
+                    <p className="text-[10px] uppercase tracking-widest text-on-surface-variant font-headline">שם סוכן</p>
+                    <p className="font-bold text-on-surface">{agreementData.agentName || '—'}</p>
+                  </div>
+                  <div className="space-y-1">
+                    <p className="text-[10px] uppercase tracking-widest text-on-surface-variant font-headline">ת.ז. סוכן</p>
+                    <p className="font-bold text-on-surface font-mono">{agreementData.agentId || '—'}</p>
+                  </div>
+                  <div className="space-y-1">
+                    <p className="text-[10px] uppercase tracking-widest text-on-surface-variant font-headline">תוקף</p>
+                    <p className="font-bold text-on-surface text-sm">
+                      {agreementData.validFrom || '—'}{agreementData.validTo ? ` — ${agreementData.validTo}` : ''}
+                    </p>
+                  </div>
+                </div>
+              </div>
+
+              {agreementData.rates.length === 0 ? (
+                <div className="bg-surface-container-lowest rounded-lg p-8 text-center text-on-surface-variant">
+                  לא חולצו תעריפים מההסכם. ייתכן שהפורמט אינו נתמך עדיין.
+                </div>
+              ) : (
+                <div className="bg-surface-container-lowest rounded-lg overflow-hidden">
+                  <div className="overflow-x-auto max-h-96 overflow-y-auto">
+                    <table className="w-full text-right text-sm">
+                      <caption className="sr-only">תעריפי הסכם עמלות</caption>
+                      <thead className="sticky top-0">
+                        <tr className="bg-surface-container text-[10px] uppercase tracking-widest text-on-surface-variant font-headline">
+                          <th className="px-4 py-3">מוצר</th>
+                          <th className="px-4 py-3">סוג עמלה</th>
+                          <th className="px-4 py-3">שנים</th>
+                          <th className="px-4 py-3">סוג</th>
+                          <th className="px-4 py-3">שיעור</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {agreementData.rates.map((r, i) => (
+                          <tr key={i} className="hover:bg-surface-container-low transition-colors">
+                            <td className="px-4 py-3 font-medium">{r.product}</td>
+                            <td className="px-4 py-3">{r.commissionType}</td>
+                            <td className="px-4 py-3">{r.yearRange || '—'}</td>
+                            <td className="px-4 py-3 text-xs">{r.isBookCommission ? 'עמלת ספר' : (r.notes || '—')}</td>
+                            <td className="px-4 py-3 font-bold text-secondary">{(r.rate * 100).toFixed(2)}%</td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                </div>
+              )}
+            </section>
           )}
 
           {/* Parse Results */}

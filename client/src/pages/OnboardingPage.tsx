@@ -171,7 +171,7 @@ export default function OnboardingPage() {
   const fileInputRef = useRef<HTMLInputElement>(null);
   const handleUpload = useCallback(async (companyId: string, file: File) => {
     const ext = file.name.toLowerCase();
-    if (!ext.endsWith('.xls') && !ext.endsWith('.xlsx') && !ext.endsWith('.csv')) return;
+    if (!ext.endsWith('.xls') && !ext.endsWith('.xlsx') && !ext.endsWith('.csv') && !ext.endsWith('.pdf')) return;
 
     // Mark uploading
     setUploadStatus((prev) => ({
@@ -795,7 +795,7 @@ function StepUpload({
           <input
             ref={fileInputRef}
             type="file"
-            accept=".csv,.xls,.xlsx"
+            accept=".csv,.xls,.xlsx,.pdf"
             className="hidden"
             onChange={handleFileSelect}
           />
@@ -815,12 +815,13 @@ function StepUpload({
             </div>
             <h3 className="text-lg font-bold text-primary">גרור ושחרר קבצים כאן</h3>
             <p className="text-on-surface-variant text-sm">
-              XLS, XLSX, CSV
+              XLS, XLSX, CSV, PDF
             </p>
             <div className="flex gap-2">
               <span className="bg-primary-fixed text-primary text-xs font-bold px-3 py-1 rounded-full">.xls</span>
               <span className="bg-primary-fixed text-primary text-xs font-bold px-3 py-1 rounded-full">.xlsx</span>
               <span className="bg-surface-container-high text-on-surface-variant text-xs font-bold px-3 py-1 rounded-full">.csv</span>
+              <span className="bg-primary-fixed text-primary text-xs font-bold px-3 py-1 rounded-full">.pdf</span>
             </div>
             <div className="flex gap-2 mt-2">
               <button

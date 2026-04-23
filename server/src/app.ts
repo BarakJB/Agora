@@ -26,14 +26,19 @@ const allowedOrigins = process.env.ALLOWED_ORIGINS
   ? process.env.ALLOWED_ORIGINS.split(',').map((o) => o.trim())
   : ['http://localhost:5173'];
 
+const isDev = process.env.NODE_ENV !== 'production';
+
 app.use(
   cors({
     origin(origin, callback) {
       if (!origin || allowedOrigins.includes(origin)) {
-        callback(null, true);
-      } else {
-        callback(new Error('Not allowed by CORS'));
+        return callback(null, true);
       }
+      if (isDev && /^http:\/\/(localhost|127\.0\.0\.1|192\.168\.\d+\.\d+|10\.\d+\.\d+\.\d+)(:\d+)?$/.test(origin)) {
+        return callback(null, true);
+      }
+      logger.warn({ origin, allowedOrigins }, 'CORS blocked origin');
+      callback(new Error('Not allowed by CORS'));
     },
   }),
 );

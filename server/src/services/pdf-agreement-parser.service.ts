@@ -1,5 +1,5 @@
 // eslint-disable-next-line @typescript-eslint/no-require-imports
-const pdfParse = require('pdf-parse');
+const pdfParse = require('pdf-parse/lib/pdf-parse.js');
 
 // ============ Types ============
 
@@ -119,12 +119,18 @@ function parsePhoenixAgreement(text: string): AgreementRate[] {
   // Detect agreement type from title
   const isGamalType = text.includes('מוצרי גמל והשתלמות') || text.includes('מוצרים פיננסים');
   const isLifeHealthType = text.includes('ביטוח חיים ובריאות') || text.includes('עמלות טיפול ורכישה');
+  const isPensionType =
+    (text.includes('הפניקס פנסיה מקיפה') || text.includes('הפניקס פנסיה משלימה')) &&
+    text.includes('ביטוח מנהלים');
 
   if (isGamalType) {
     rates.push(...parsePhoenixGamalRates(text, agreementId));
   }
   if (isLifeHealthType) {
     rates.push(...parsePhoenixLifeHealthRates(text, agreementId));
+  }
+  if (isPensionType) {
+    rates.push(...parsePhoenixPensionRates(text, agreementId));
   }
 
   return rates;
@@ -271,6 +277,60 @@ function parsePhoenixLifeHealthRates(text: string, agreementId: string | null): 
         notes: 'עמלת בסיס',
       });
     }
+  }
+
+  return rates;
+}
+
+/**
+ * Parse Phoenix Pension + Managers Insurance agreement (נספח 9997 style).
+ * Extracts annual management fee rates for pension funds, immediate pension, and managers insurance.
+ */
+function parsePhoenixPensionRates(text: string, agreementId: string | null): AgreementRate[] {
+  const rates: AgreementRate[] = [];
+  const company = 'הפניקס';
+  const agreementType = 'פנסיה וביטוח מנהלים';
+
+  // Pension fund annual management fee: "קרנות הפנסיה      0.4%"
+  const pensionMatch = text.match(/קרנות הפנסיה\s+(\d+\.?\d*)%/);
+  if (pensionMatch) {
+    rates.push({
+      company, agreementId, agreementType,
+      product: 'קרנות פנסיה — עמלת טיפול שנתית',
+      commissionType: 'טיפול',
+      rate: parseFloat(pensionMatch[1]) / 100,
+      yearRange: null,
+      isBookCommission: false,
+      notes: 'עמלת היקף שנתית מצבירת עמיתים',
+    });
+  }
+
+  // Immediate pension annual rate: "חשבונות עמיתים בקרנות פנסיה המיועדים לתשלום קצבה מיידית 0ומעלה0.8%א'-ז'"
+  const immediateMatch = text.match(/חשבונות עמיתים[^\n]*?קצבה מיידית[^%\n]*?(\d+\.?\d*)%/);
+  if (immediateMatch) {
+    rates.push({
+      company, agreementId, agreementType,
+      product: 'קרנות פנסיה — קצבה מיידית',
+      commissionType: 'טיפול',
+      rate: parseFloat(immediateMatch[1]) / 100,
+      yearRange: null,
+      isBookCommission: false,
+      notes: 'עמלת טיפול שנתית על חשבונות קצבה מיידית',
+    });
+  }
+
+  // Managers insurance annual rate: "ביטוח מנהלים - מסלול למנהלים ושכירים/מסלול לעצמאים  0.5%"
+  const managersMatch = text.match(/ביטוח מנהלים\s*-\s*מסלול למנהלים[^%\n]*?(\d+\.?\d*)%/);
+  if (managersMatch) {
+    rates.push({
+      company, agreementId, agreementType,
+      product: 'ביטוח מנהלים',
+      commissionType: 'טיפול',
+      rate: parseFloat(managersMatch[1]) / 100,
+      yearRange: null,
+      isBookCommission: false,
+      notes: 'עמלת טיפול שנתית — מסלול למנהלים ושכירים/לעצמאים',
+    });
   }
 
   return rates;
