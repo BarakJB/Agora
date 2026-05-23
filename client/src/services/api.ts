@@ -401,9 +401,59 @@ export function getClientTransactions(clientId: string) {
   return request<ClientTransaction[]>(`/sales/client/${encodeURIComponent(clientId)}`);
 }
 
+// ─── Contract Coverage ──────────────────────────────────────
+import type { ContractCoverageResponse } from '../types/contract-coverage';
+
+export function getContractCoverageSummary(month?: string) {
+  const qs = month ? `?month=${encodeURIComponent(month)}` : '';
+  return request<ContractCoverageResponse>(`/sales/contract-coverage${qs}`);
+}
+
+export function getContractCoverageDetailed(month?: string) {
+  const base = month
+    ? `?month=${encodeURIComponent(month)}&detailed=true`
+    : '?detailed=true';
+  return request<ContractCoverageResponse>(`/sales/contract-coverage${base}`);
+}
+
+// ─── Sales Potential ─────────────────────────────────────────
+import type { SalesPotentialData } from '../types/potential';
+
+export const salesApi = {
+  getSalesPotential() {
+    return request<SalesPotentialData>('/sales/potential');
+  },
+};
+
 // ─── Health ──────────────────────────────────────────────────
 export function healthCheck() {
   return request<{ status: string; timestamp: string }>('/../health');
 }
+
+// ─── Advisor ─────────────────────────────────────────────────
+import type { ChatResponse, ConversationSummary, ConversationDetail } from '../types/advisor';
+
+export const advisorApi = {
+  chat(payload: { message: string; conversationId?: string }) {
+    return request<ChatResponse>('/advisor/chat', {
+      method: 'POST',
+      body: JSON.stringify(payload),
+    });
+  },
+
+  listConversations() {
+    return request<ConversationSummary[]>('/advisor/conversations');
+  },
+
+  getConversation(id: string) {
+    return request<ConversationDetail>(`/advisor/conversations/${encodeURIComponent(id)}`);
+  },
+
+  deleteConversation(id: string) {
+    return request<{ deleted: boolean }>(`/advisor/conversations/${encodeURIComponent(id)}`, {
+      method: 'DELETE',
+    });
+  },
+};
 
 export { ApiError };

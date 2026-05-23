@@ -160,5 +160,33 @@ export interface PortfolioAnalysis {
     newClients: PortfolioNewClient[];
 }
 export declare function getPortfolioAnalysis(agentId: string): Promise<PortfolioAnalysis>;
+export type ContractStatus = 'covered' | 'uncovered';
+export interface SalesTransactionWithContract extends SalesTransaction {
+    contractStatus: ContractStatus;
+    agreedRate: number | null;
+    agreedCommissionType: string | null;
+}
+export interface ContractCoverageSummary {
+    coveredCount: number;
+    uncoveredCount: number;
+    coveredAmount: number;
+    uncoveredAmount: number;
+}
+/**
+ * Sales transactions enriched with agreement-rate coverage status.
+ * "covered" = agent has an uploaded agreement rate for this company + branch.
+ * Pagination: limit/offset apply to the filtered result set.
+ */
+export declare function getSalesWithContractStatus(agentId: string, opts?: {
+    month?: string;
+    limit?: number;
+    offset?: number;
+}): Promise<SalesTransactionWithContract[]>;
+/**
+ * Aggregated coverage summary for the agent, optionally scoped to a month.
+ */
+export declare function getContractCoverageSummary(agentId: string, opts?: {
+    month?: string;
+}): Promise<ContractCoverageSummary>;
 export declare function getMonthlySalarySummary(agentId: string): Promise<MonthlySalarySummary[]>;
 //# sourceMappingURL=sales.repository.d.ts.map

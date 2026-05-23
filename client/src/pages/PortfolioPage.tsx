@@ -1,17 +1,16 @@
 import { useState, useEffect, useMemo } from 'react';
 import Icon from '../components/ui/Icon';
+import { TrafficLightPill } from '../components/common/TrafficLight';
 import * as api from '../services/api';
-
-/* ─── Helpers ─── */
-const HEBREW_MONTHS = ['ינואר','פברואר','מרץ','אפריל','מאי','יוני','יולי','אוגוסט','ספטמבר','אוקטובר','נובמבר','דצמבר'];
-
-function formatMonth(key: string): string {
-  const [year, month] = key.split('-');
-  const idx = parseInt(month, 10) - 1;
-  return `${HEBREW_MONTHS[idx] || month} ${year}`;
-}
-
-const fmt = (n: number) => n.toLocaleString('he-IL', { maximumFractionDigits: 0 });
+import { getContractCoverageSummary } from '../services/api';
+import type { CommissionRow } from '../store/dataStore';
+import { detectAnomalies, anomalyKey } from '../utils/anomalies';
+import type { Anomaly } from '../utils/anomalies';
+import { formatMonth, fmt } from '../utils/dateFormat';
+import { mapToCommissionRow } from '../utils/commissionMapper';
+import { evaluateConcentrationTop5, evaluateAtRiskCount } from '../utils/profitThresholds';
+import ContractCoverageCard from '../components/portfolio/ContractCoverageCard';
+import type { ContractCoverageSummary } from '../types/contract-coverage';
 
 type SortKey = 'total' | 'monthlyAvg' | 'trend';
 type SortDir = 'asc' | 'desc';
@@ -20,10 +19,13 @@ const TREND_ORDER = { up: 1, stable: 0, down: -1 };
 
 export default function PortfolioPage() {
   const [data, setData] = useState<api.PortfolioAnalysis | null>(null);
+  const [commissions, setCommissions] = useState<CommissionRow[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [sortKey, setSortKey] = useState<SortKey>('total');
   const [sortDir, setSortDir] = useState<SortDir>('desc');
+  const [expandedMonths, setExpandedMonths] = useState<Record<string, boolean>>({});
+  const [coverageSummary, setCoverageSummary] = useState<ContractCoverageSummary | null>(null);
 
   useEffect(() => {
     let cancelled = false;
@@ -31,8 +33,16 @@ export default function PortfolioPage() {
       setLoading(true);
       setError(null);
       try {
-        const res = await api.getPortfolioAnalysis();
-        if (!cancelled && res.data) setData(res.data);
+        const [portfolioRes, salesRes, coverageRes] = await Promise.all([
+          api.getPortfolioAnalysis(),
+          api.getSalesTransactions(),
+          getContractCoverageSummary(),
+        ]);
+        if (!cancelled) {
+          if (portfolioRes.data) setData(portfolioRes.data);
+          setCommissions((salesRes.data || []).map(mapToCommissionRow));
+          if (coverageRes.data?.summary) setCoverageSummary(coverageRes.data.summary);
+        }
       } catch (err) {
         if (!cancelled) {
           setError(err instanceof api.ApiError ? err.message : 'שגיאה בטעינת נתוני תיק');
@@ -57,6 +67,31 @@ export default function PortfolioPage() {
     });
     return clients;
   }, [data, sortKey, sortDir]);
+
+  const availableMonths = useMemo(() => {
+    const months = new Set<string>();
+    commissions.forEach(c => { if (c.processingMonth) months.add(c.processingMonth); });
+    return Array.from(months).sort();
+  }, [commissions]);
+
+  const anomaliesByMonth = useMemo((): Record<string, Anomaly[]> => {
+    const all = detectAnomalies(commissions, availableMonths);
+    const map: Record<string, Anomaly[]> = {};
+    all.forEach(a => {
+      if (!map[a.month]) map[a.month] = [];
+      map[a.month].push(a);
+    });
+    return map;
+  }, [commissions, availableMonths]);
+
+  const alertMonths = useMemo(
+    () => Object.keys(anomaliesByMonth).sort((a, b) => b.localeCompare(a)),
+    [anomaliesByMonth],
+  );
+
+  function toggleMonth(month: string) {
+    setExpandedMonths(prev => ({ ...prev, [month]: !prev[month] }));
+  }
 
   function handleSort(key: SortKey) {
     if (sortKey === key) {
@@ -107,6 +142,14 @@ export default function PortfolioPage() {
           סקירה מקיפה של תיק הלקוחות שלך
         </p>
       </div>
+
+      {/* ─── Contract coverage widget ─── */}
+      {coverageSummary && (
+        <ContractCoverageCard
+          summary={coverageSummary}
+          totalAmount={coverageSummary.coveredAmount + coverageSummary.uncoveredAmount}
+        />
+      )}
 
       {/* ─── Row 1: Overview cards ─── */}
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
@@ -227,10 +270,17 @@ export default function PortfolioPage() {
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
         {/* At risk */}
         <section className="bg-surface-container-low rounded-2xl p-6 border border-outline-variant/30">
-          <h2 className="text-lg font-bold font-headline text-on-surface mb-4 flex items-center gap-2">
-            <Icon name="trending_down" className="text-error" size="sm" />
-            לקוחות בסיכון
-          </h2>
+          <div className="flex items-center justify-between mb-4">
+            <h2 className="text-lg font-bold font-headline text-on-surface flex items-center gap-2">
+              <Icon name="trending_down" className="text-error" size="sm" />
+              לקוחות בסיכון
+            </h2>
+            <TrafficLightPill
+              level={evaluateAtRiskCount(atRisk.length)}
+              label={`${atRisk.length} לקוחות`}
+              size="sm"
+            />
+          </div>
           {atRisk.length > 0 ? (
             <div className="space-y-3">
               {atRisk.map((c) => (
@@ -302,6 +352,127 @@ export default function PortfolioPage() {
           <p className="text-sm text-on-surface-variant">אין נתונים חודשיים</p>
         )}
       </section>
+
+      {/* ─── Row 6: Alerts history ─── */}
+      {alertMonths.length > 0 && (
+        <section className="bg-surface-container-low rounded-2xl p-6 border border-outline-variant/30">
+          <div className="flex items-center gap-3 mb-5">
+            <div className="w-9 h-9 rounded-lg bg-error-container flex items-center justify-center shrink-0">
+              <Icon name="notifications_active" size="sm" className="text-error" />
+            </div>
+            <div>
+              <h2 className="text-lg font-bold font-headline text-on-surface">מעקב התראות לאורך כל החודשים</h2>
+              <p className="text-xs text-on-surface-variant mt-0.5">{alertMonths.length} חודשים עם התראות</p>
+            </div>
+          </div>
+          <div className="space-y-2">
+            {alertMonths.map((month) => {
+              const monthAlerts = anomaliesByMonth[month];
+              const highCount = monthAlerts.filter(a => a.severity === 'high').length;
+              const isOpen = !!expandedMonths[month];
+              return (
+                <div key={month} className="rounded-xl overflow-hidden border border-outline-variant/20">
+                  <button
+                    onClick={() => toggleMonth(month)}
+                    className="w-full px-4 py-3 bg-surface-container-lowest flex items-center justify-between hover:bg-surface-container-low transition-colors"
+                  >
+                    <div className="flex items-center gap-3">
+                      <Icon name="calendar_month" size="sm" className="text-on-surface-variant" />
+                      <span className="font-bold text-sm text-on-surface">{formatMonth(month)}</span>
+                      <span className={`text-xs font-bold px-2 py-0.5 rounded-full ${
+                        highCount > 0 ? 'bg-error text-on-error' : 'bg-tertiary-fixed text-on-tertiary-container'
+                      }`}>
+                        {monthAlerts.length} התראות
+                      </span>
+                      {highCount > 0 && (
+                        <span className="text-xs text-error font-medium">{highCount} קריטיות</span>
+                      )}
+                    </div>
+                    <Icon name={isOpen ? 'expand_less' : 'expand_more'} className="text-on-surface-variant" />
+                  </button>
+
+                  {isOpen && (
+                    <div className="p-3 space-y-2 bg-surface-container-lowest/50">
+                      {monthAlerts.map((alert, i) => (
+                        <div
+                          key={anomalyKey(alert, i)}
+                          className={`rounded-lg overflow-hidden ${
+                            alert.severity === 'high' ? 'bg-error-container/30' :
+                            alert.severity === 'medium' ? 'bg-tertiary-fixed/30' :
+                            'bg-surface-container-lowest'
+                          }`}
+                        >
+                          <div className="p-3 flex items-start gap-3">
+                            <div className={`w-7 h-7 rounded-full flex items-center justify-center shrink-0 ${
+                              alert.severity === 'high' ? 'bg-error-container' :
+                              alert.severity === 'medium' ? 'bg-tertiary-fixed' :
+                              'bg-surface-container-high'
+                            }`}>
+                              <Icon name={alert.icon} size="sm" className={
+                                alert.severity === 'high' ? 'text-error' :
+                                alert.severity === 'medium' ? 'text-on-tertiary-container' :
+                                'text-on-surface-variant'
+                              } />
+                            </div>
+                            <div className="flex-1">
+                              <p className={`font-bold text-sm ${
+                                alert.severity === 'high' ? 'text-error' : 'text-on-surface'
+                              }`}>{alert.message}</p>
+                              <p className="text-xs text-on-surface-variant mt-0.5 leading-relaxed">{alert.detail}</p>
+                            </div>
+                          </div>
+
+                          {alert.clients && alert.clients.length > 0 && (
+                            <div className="px-3 pb-3">
+                              <table className="w-full text-xs">
+                                <thead>
+                                  <tr className="text-[10px] uppercase tracking-widest text-on-surface-variant/60 font-headline">
+                                    <th className="text-start py-2 pe-3">שם</th>
+                                    <th className="text-start py-2 pe-3">ת.ז</th>
+                                    <th className="text-start py-2 pe-3">מוצר</th>
+                                    <th className="text-end py-2">סכום</th>
+                                  </tr>
+                                </thead>
+                                <tbody>
+                                  {alert.clients.filter(c => Math.abs(c.amount) >= 1).map((client, ci) => (
+                                    <tr key={ci} className="text-on-surface">
+                                      <td className="py-1.5 pe-3 font-medium">{client.name}</td>
+                                      <td className="py-1.5 pe-3 text-on-surface-variant">{client.id || '—'}</td>
+                                      <td className="py-1.5 pe-3 text-on-surface-variant">{client.product}</td>
+                                      <td className={`py-1.5 text-end font-bold ${
+                                        alert.type === 'client_lost' ? 'text-error' :
+                                        alert.type === 'client_spike' ? 'text-error' :
+                                        client.amount < 0 ? 'text-error' : 'text-on-surface'
+                                      }`}>
+                                        {alert.type === 'client_negative' && <>{fmt(Math.round(Math.abs(client.amount)))}₪ החזר</>}
+                                        {alert.type === 'client_lost' && <>-{fmt(Math.round(Math.abs(client.amount)))}₪ אובדן</>}
+                                        {alert.type === 'client_spike' && <>-{fmt(Math.round(Math.abs(client.amount)))}₪ ירידה</>}
+                                        {!['client_negative','client_lost','client_spike'].includes(alert.type) && <>{fmt(Math.round(Math.abs(client.amount)))}₪</>}
+                                      </td>
+                                    </tr>
+                                  ))}
+                                </tbody>
+                                <tfoot>
+                                  <tr className="font-bold text-on-surface">
+                                    <td colSpan={3} className="py-2 pt-3">סה״כ {alert.clients.length} לקוחות</td>
+                                    <td className={`py-2 pt-3 text-end ${alert.type === 'client_negative' ? 'text-error' : 'text-primary'}`}>
+                                      {fmt(Math.round(Math.abs(alert.clients.reduce((s, c) => s + c.amount, 0))))}₪
+                                    </td>
+                                  </tr>
+                                </tfoot>
+                              </table>
+                            </div>
+                          )}
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </div>
+              );
+            })}
+          </div>
+        </section>
+      )}
     </div>
   );
 }
@@ -325,11 +496,15 @@ function OverviewCard({ icon, label, value, sub }: { icon: string; label: string
 
 function ConcentrationMeter({ label, pct }: { label: string; pct: number }) {
   const isHigh = pct > 50;
+  const level = evaluateConcentrationTop5(pct);
   return (
     <div>
       <div className="flex items-center justify-between mb-1">
         <span className="text-sm text-on-surface">{label}</span>
-        <span className={`text-sm font-bold ${isHigh ? 'text-error' : 'text-primary'}`}>{pct}%</span>
+        <div className="flex items-center gap-2">
+          <TrafficLightPill level={level} showLabel={false} size="sm" />
+          <span className={`text-sm font-bold ${isHigh ? 'text-error' : 'text-primary'}`}>{pct}%</span>
+        </div>
       </div>
       <div className="h-2.5 bg-surface-container-high rounded-full overflow-hidden">
         <div

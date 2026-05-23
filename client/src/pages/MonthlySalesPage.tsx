@@ -2,6 +2,7 @@ import { useState, useMemo, useEffect, useRef, useCallback, Fragment } from 'rea
 import Icon from '../components/ui/Icon';
 import { useAuthStore } from '../store/authStore';
 import * as api from '../services/api';
+import CompanyLogo from '../components/common/CompanyLogo';
 
 /* ─── Helpers ─── */
 const HEBREW_MONTHS = [
@@ -317,7 +318,7 @@ export default function MonthlySalesPage() {
                         <tr className={`bg-surface-container-low border-s-4 ${companyColors[ci % companyColors.length]}`}>
                           <td className="px-4 py-3">
                             <div className="flex items-center gap-2">
-                              <Icon name="business" size="sm" className="text-primary" />
+                              <CompanyLogo company={company.name} size="sm" />
                               <span className="font-bold text-on-surface text-base">{company.name}</span>
                               {hasTrend && (
                                 <span className={`text-[10px] font-bold ${trendDiff >= 0 ? 'text-secondary' : 'text-error'}`}>

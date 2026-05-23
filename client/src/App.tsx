@@ -12,6 +12,11 @@ const CommissionUploadPage = lazy(() => import('./pages/CommissionUploadPage'));
 const MonthlySalesPage = lazy(() => import('./pages/MonthlySalesPage'));
 const PortfolioPage = lazy(() => import('./pages/PortfolioPage'));
 const SettingsPage = lazy(() => import('./pages/SettingsPage'));
+const AdvisorPage = lazy(() => import('./pages/AdvisorPage'));
+const ClientRankingPage = lazy(() => import('./pages/ClientRankingPage'));
+const AnomaliesPage = lazy(() => import('./pages/AnomaliesPage'));
+const ContractCoveragePage = lazy(() => import('./pages/ContractCoveragePage'));
+const SalesPotentialPage = lazy(() => import('./pages/SalesPotentialPage'));
 
 function LoadingSpinner() {
   return (
@@ -114,11 +119,17 @@ export default function App() {
           >
             <Route index element={<Navigate to="/dashboard" replace />} />
             <Route path="dashboard" element={<DashboardPage />} />
+            <Route path="advisor" element={<AdvisorPage />} />
             <Route path="portfolio" element={<PortfolioPage />} />
             <Route path="policies" element={<PolicyTrackerPage />} />
             <Route path="upload" element={<CommissionUploadPage />} />
             <Route path="monthly" element={<MonthlySalesPage />} />
             <Route path="settings" element={<SettingsPage />} />
+            <Route path="clients/ranking" element={<ClientRankingPage />} />
+            <Route path="clients/:clientId" element={<ClientRankingPage />} />
+            <Route path="anomalies" element={<AnomaliesPage />} />
+            <Route path="portfolio/contract-coverage" element={<ContractCoveragePage />} />
+            <Route path="potential" element={<SalesPotentialPage />} />
           </Route>
         </Routes>
       </Suspense>

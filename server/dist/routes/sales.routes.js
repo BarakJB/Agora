@@ -3,6 +3,9 @@ Object.defineProperty(exports, "__esModule", { value: true });
 exports.salesRouter = void 0;
 const express_1 = require("express");
 const sales_repository_js_1 = require("../repositories/sales.repository.js");
+const potential_repository_js_1 = require("../repositories/potential.repository.js");
+const validate_js_1 = require("../middleware/validate.js");
+const sales_schemas_js_1 = require("../validators/sales.schemas.js");
 exports.salesRouter = (0, express_1.Router)();
 /**
  * POST /api/v1/sales
@@ -125,6 +128,60 @@ exports.salesRouter.get('/clients', async (req, res, next) => {
             data: clients,
             error: null,
             meta: { count: clients.length },
+        });
+    }
+    catch (err) {
+        next(err);
+    }
+});
+/**
+ * GET /api/v1/sales/contract-coverage?month=YYYY-MM&detailed=true
+ * Auth: required
+ * Returns coverage summary (+ optionally transactions) split by contract status.
+ */
+exports.salesRouter.get('/contract-coverage', (0, validate_js_1.validate)({ query: sales_schemas_js_1.contractCoverageQuerySchema }), async (req, res, next) => {
+    try {
+        const agentId = (res.locals.sub || res.locals.agentId);
+        const { month, detailed, limit, page } = res.locals.parsedQuery;
+        const offset = (page - 1) * limit;
+        const [summary, transactions] = await Promise.all([
+            (0, sales_repository_js_1.getContractCoverageSummary)(agentId, { month }),
+            detailed
+                ? (0, sales_repository_js_1.getSalesWithContractStatus)(agentId, { month, limit, offset })
+                : Promise.resolve(undefined),
+        ]);
+        res.json({
+            data: {
+                summary,
+                ...(detailed && { transactions }),
+            },
+            error: null,
+            meta: detailed
+                ? { count: transactions?.length ?? 0, page, limit }
+                : null,
+        });
+    }
+    catch (err) {
+        next(err);
+    }
+});
+/**
+ * GET /api/v1/sales/potential
+ * Auth: required
+ * Returns sales potential analysis: cross-sell opportunities, dormant clients,
+ * untapped branches, and employer clusters.
+ */
+exports.salesRouter.get('/potential', async (req, res, next) => {
+    try {
+        const agentId = (res.locals.sub || res.locals.agentId);
+        const result = await (0, potential_repository_js_1.getSalesPotential)(agentId);
+        res.json({
+            data: result,
+            error: null,
+            meta: {
+                latestMonth: result.meta.latestMonth,
+                totalClients: result.meta.totalClients,
+            },
         });
     }
     catch (err) {

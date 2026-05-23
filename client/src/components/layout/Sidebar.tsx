@@ -7,8 +7,12 @@ import NewPolicyModal from '../ui/NewPolicyModal';
 
 const navItems = [
   { to: '/dashboard', icon: 'dashboard', label: 'דשבורד' },
+  { to: '/advisor', icon: 'smart_toy', label: 'יועץ AI' },
   { to: '/policies', icon: 'description', label: 'מעקב פוליסות' },
   { to: '/portfolio', icon: 'analytics', label: 'ניתוח תיק' },
+  { to: '/clients/ranking', icon: 'leaderboard', label: 'מידרוג לקוחות' },
+  { to: '/potential', icon: 'auto_awesome', label: 'פוטנציאל מכירה' },
+  { to: '/anomalies', icon: 'notification_important', label: 'חריגות' },
   { to: '/upload', icon: 'upload_file', label: 'העלאת עמלות' },
   { to: '/monthly', icon: 'calendar_month', label: 'דוחות חודשיים' },
   { to: '/settings', icon: 'settings', label: 'הגדרות' },

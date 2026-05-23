@@ -6,8 +6,13 @@ import {
   searchClients,
   getClientTransactions,
   getPortfolioAnalysis,
+  getSalesWithContractStatus,
+  getContractCoverageSummary,
   type SalesTransactionInput,
 } from '../repositories/sales.repository.js';
+import { getSalesPotential } from '../repositories/potential.repository.js';
+import { validate } from '../middleware/validate.js';
+import { contractCoverageQuerySchema } from '../validators/sales.schemas.js';
 
 export const salesRouter = Router();
 
@@ -146,6 +151,69 @@ salesRouter.get('/clients', async (req, res, next) => {
       data: clients,
       error: null,
       meta: { count: clients.length },
+    });
+  } catch (err) {
+    next(err);
+  }
+});
+
+/**
+ * GET /api/v1/sales/contract-coverage?month=YYYY-MM&detailed=true
+ * Auth: required
+ * Returns coverage summary (+ optionally transactions) split by contract status.
+ */
+salesRouter.get(
+  '/contract-coverage',
+  validate({ query: contractCoverageQuerySchema }),
+  async (req, res, next) => {
+    try {
+      const agentId = (res.locals.sub || res.locals.agentId) as string;
+      const { month, detailed, limit, page } =
+        res.locals.parsedQuery as import('../validators/sales.schemas.js').ContractCoverageQuery;
+
+      const offset = (page - 1) * limit;
+
+      const [summary, transactions] = await Promise.all([
+        getContractCoverageSummary(agentId, { month }),
+        detailed
+          ? getSalesWithContractStatus(agentId, { month, limit, offset })
+          : Promise.resolve(undefined),
+      ]);
+
+      res.json({
+        data: {
+          summary,
+          ...(detailed && { transactions }),
+        },
+        error: null,
+        meta: detailed
+          ? { count: transactions?.length ?? 0, page, limit }
+          : null,
+      });
+    } catch (err) {
+      next(err);
+    }
+  },
+);
+
+/**
+ * GET /api/v1/sales/potential
+ * Auth: required
+ * Returns sales potential analysis: cross-sell opportunities, dormant clients,
+ * untapped branches, and employer clusters.
+ */
+salesRouter.get('/potential', async (req, res, next) => {
+  try {
+    const agentId = (res.locals.sub || res.locals.agentId) as string;
+    const result = await getSalesPotential(agentId);
+
+    res.json({
+      data: result,
+      error: null,
+      meta: {
+        latestMonth: result.meta.latestMonth,
+        totalClients: result.meta.totalClients,
+      },
     });
   } catch (err) {
     next(err);

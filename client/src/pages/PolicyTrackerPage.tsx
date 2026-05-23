@@ -1,5 +1,6 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
 import Icon from '../components/ui/Icon';
+import { CompanyLogo } from '../components/common/CompanyLogo';
 import {
   searchClients,
   getClientTransactions,
@@ -150,16 +151,28 @@ export default function PolicyTrackerPage() {
                       </div>
                       <div>
                         <p className="font-bold text-base">{client.insuredName}</p>
-                        <div className="flex items-center gap-2 mt-0.5">
+                        <div className="flex flex-wrap items-center gap-1.5 mt-0.5">
                           <span className="text-xs text-on-surface-variant font-mono">ת.ז {client.insuredId}</span>
-                          {client.insuranceCompanies.map((co) => (
+                          {(client.insuranceCompanies.length <= 4
+                            ? client.insuranceCompanies
+                            : client.insuranceCompanies.slice(0, 3)
+                          ).map((co) => (
                             <span
                               key={co}
-                              className="text-[10px] bg-primary-fixed text-primary px-2 py-0.5 rounded-full font-bold"
+                              className="inline-flex items-center gap-1 text-[10px] bg-primary-fixed text-primary px-2 py-0.5 rounded-full font-bold"
                             >
+                              <CompanyLogo company={co} size="xs" />
                               {co}
                             </span>
                           ))}
+                          {client.insuranceCompanies.length > 4 && (
+                            <span
+                              title={client.insuranceCompanies.slice(3).join(', ')}
+                              className="inline-flex items-center text-[10px] bg-surface-container-low text-on-surface-variant px-2 py-0.5 rounded-full font-bold cursor-default"
+                            >
+                              +{client.insuranceCompanies.length - 3} נוספות
+                            </span>
+                          )}
                         </div>
                       </div>
                     </div>
@@ -270,7 +283,12 @@ export default function PolicyTrackerPage() {
                                         <td className="py-2.5 font-bold text-end w-28">
                                           <span className={tx.commissionAmount < 0 ? 'text-error' : 'text-secondary'}>{fmt(tx.commissionAmount)}₪</span>
                                         </td>
-                                        <td className="py-2.5 text-on-surface-variant text-xs w-20">{tx.insuranceCompany}</td>
+                                        <td className="py-2.5 text-on-surface-variant text-xs w-20">
+                                          <span className="inline-flex items-center gap-2">
+                                            <CompanyLogo company={tx.insuranceCompany ?? ''} size="xs" />
+                                            {tx.insuranceCompany ?? '—'}
+                                          </span>
+                                        </td>
                                       </tr>
                                     ))}
                                   </tbody>

@@ -17,6 +17,7 @@ const sales_routes_js_1 = require("./routes/sales.routes.js");
 const prediction_routes_js_1 = require("./routes/prediction.routes.js");
 const stripe_routes_js_1 = require("./routes/stripe.routes.js");
 const rates_routes_js_1 = require("./routes/rates.routes.js");
+const advisor_routes_js_1 = require("./routes/advisor.routes.js");
 const commission_template_service_js_1 = require("./services/commission-template.service.js");
 const auth_middleware_js_1 = require("./middleware/auth.middleware.js");
 const errorHandler_js_1 = require("./middleware/errorHandler.js");
@@ -27,14 +28,17 @@ app.use((0, helmet_1.default)());
 const allowedOrigins = process.env.ALLOWED_ORIGINS
     ? process.env.ALLOWED_ORIGINS.split(',').map((o) => o.trim())
     : ['http://localhost:5173'];
+const isDev = process.env.NODE_ENV !== 'production';
 app.use((0, cors_1.default)({
     origin(origin, callback) {
         if (!origin || allowedOrigins.includes(origin)) {
-            callback(null, true);
+            return callback(null, true);
         }
-        else {
-            callback(new Error('Not allowed by CORS'));
+        if (isDev && /^http:\/\/(localhost|127\.0\.0\.1|192\.168\.\d+\.\d+|10\.\d+\.\d+\.\d+)(:\d+)?$/.test(origin)) {
+            return callback(null, true);
         }
+        logger_js_1.logger.warn({ origin, allowedOrigins }, 'CORS blocked origin');
+        callback(new Error('Not allowed by CORS'));
     },
 }));
 app.use(requestId_js_1.requestId);
@@ -95,6 +99,7 @@ app.use('/api/v1/uploads', auth_middleware_js_1.requireAuth, upload_routes_js_1.
 app.use('/api/v1/sales', auth_middleware_js_1.requireAuth, sales_routes_js_1.salesRouter);
 app.use('/api/v1/predictions', auth_middleware_js_1.requireAuth, prediction_routes_js_1.predictionRouter);
 app.use('/api/v1/rates', auth_middleware_js_1.requireAuth, rates_routes_js_1.ratesRouter);
+app.use('/api/v1/advisor', auth_middleware_js_1.requireAuth, advisor_routes_js_1.advisorRouter);
 app.use(errorHandler_js_1.errorHandler);
 exports.default = app;
 //# sourceMappingURL=app.js.map

@@ -137,6 +137,22 @@ exports.uploadRouter.post('/', upload.single('file'), async (req, res, next) => 
         next(err);
     }
 });
+const VALID_INSURANCE_COMPANIES = ['harel', 'menora', 'phoenix', 'analyst'];
+const COMPANY_CODE_TO_DETECTED = {
+    harel: 'הראל',
+    menora: 'מנורה מבטחים',
+    phoenix: 'הפניקס',
+    analyst: 'אנליסט',
+};
+const COMPANY_CODE_TO_LABEL = {
+    harel: 'הראל',
+    menora: 'מנורה מבטחים',
+    phoenix: 'הפניקס',
+    analyst: 'אנליסט',
+};
+function isValidCompanyCode(value) {
+    return VALID_INSURANCE_COMPANIES.includes(value);
+}
 // Parse Excel commission file — returns parsed + validated data without persisting
 exports.uploadRouter.post('/parse', upload.single('file'), async (req, res, next) => {
     try {
@@ -145,6 +161,20 @@ exports.uploadRouter.post('/parse', upload.single('file'), async (req, res, next
             res.status(400).json({ data: null, error: 'File is required (field name: file)', meta: null });
             return;
         }
+        const rawCompany = req.body.insuranceCompany?.trim() ?? '';
+        if (!rawCompany) {
+            res.status(400).json({ data: null, error: 'יש לבחור חברת ביטוח לפני העלאת קובץ', meta: null });
+            return;
+        }
+        if (!isValidCompanyCode(rawCompany)) {
+            res.status(400).json({
+                data: null,
+                error: `חברת ביטוח לא חוקית. ערכים מותרים: ${VALID_INSURANCE_COMPANIES.join(', ')}`,
+                meta: null,
+            });
+            return;
+        }
+        const insuranceCompanyCode = rawCompany;
         const ext = file.originalname.toLowerCase();
         const isZip = ext.endsWith('.zip');
         const isExcel = ext.endsWith('.xls') || ext.endsWith('.xlsx');
@@ -154,10 +184,17 @@ exports.uploadRouter.post('/parse', upload.single('file'), async (req, res, next
             res.status(400).json({ data: null, error: 'Supported formats: XLS, XLSX, ZIP, CSV, PDF', meta: null });
             return;
         }
+        const selectedLabel = COMPANY_CODE_TO_LABEL[insuranceCompanyCode];
+        function buildCompanyMismatchWarning(detected) {
+            if (!detected || detected === selectedLabel)
+                return null;
+            return `החברה שזוהתה (${detected}) שונה מהבחירה שלך (${selectedLabel})`;
+        }
         // Handle PDF files (commission agreement contracts)
         if (isPdfFile) {
             try {
                 const result = await (0, pdf_agreement_parser_service_js_1.parseAgreementPdf)(file.buffer);
+                const companyWarning = buildCompanyMismatchWarning(result.company);
                 res.json({
                     data: result.rates,
                     error: null,
@@ -171,6 +208,7 @@ exports.uploadRouter.post('/parse', upload.single('file'), async (req, res, next
                         validFrom: result.validFrom,
                         validTo: result.validTo,
                         totalRates: result.rates.length,
+                        warning: companyWarning,
                     },
                 });
                 return;
@@ -188,6 +226,7 @@ exports.uploadRouter.post('/parse', upload.single('file'), async (req, res, next
                 const results = [result];
                 const totalRecords = result.records.length;
                 const totalErrors = result.errors.length;
+                const companyWarning = buildCompanyMismatchWarning(result.detectedCompany);
                 res.json({
                     data: results,
                     error: null,
@@ -199,6 +238,7 @@ exports.uploadRouter.post('/parse', upload.single('file'), async (req, res, next
                         totalErrors,
                         isAgreement: false,
                         detectedCompany: result.detectedCompany,
+                        warning: companyWarning,
                     },
                 });
                 return;
@@ -219,6 +259,7 @@ exports.uploadRouter.post('/parse', upload.single('file'), async (req, res, next
                 }
                 const totalRecords = results.reduce((sum, r) => sum + r.records.length, 0);
                 const totalErrors = results.reduce((sum, r) => sum + r.errors.length, 0);
+                const companyWarning = buildCompanyMismatchWarning('מנורה מבטחים');
                 res.json({
                     data: results,
                     error: null,
@@ -230,6 +271,7 @@ exports.uploadRouter.post('/parse', upload.single('file'), async (req, res, next
                         totalErrors,
                         isAgreement: false,
                         detectedCompany: 'מנורה מבטחים',
+                        warning: companyWarning,
                     },
                 });
                 return;
@@ -242,7 +284,6 @@ exports.uploadRouter.post('/parse', upload.single('file'), async (req, res, next
         }
         // agentId comes from JWT (set by requireAuth middleware)
         const agentId = res.locals.agentId;
-        const insuranceCompanyCode = req.body.insuranceCompany;
         // Try commission reports first, fallback to agreement parser
         let results;
         let isAgreement = false;
@@ -378,6 +419,7 @@ exports.uploadRouter.post('/parse', upload.single('file'), async (req, res, next
         const totalRecords = results.reduce((sum, r) => sum + r.records.length, 0);
         const totalErrors = results.reduce((sum, r) => sum + r.errors.length, 0);
         const detectedCompany = results.find((r) => r.detectedCompany)?.detectedCompany || null;
+        const companyMismatch = buildCompanyMismatchWarning(detectedCompany);
         res.json({
             data: results,
             error: null,
@@ -393,6 +435,7 @@ exports.uploadRouter.post('/parse', upload.single('file'), async (req, res, next
                 agentTaxId: agreementAgentTaxId,
                 skippedDueMismatch,
                 mismatchWarning,
+                warning: companyMismatch,
             },
         });
     }

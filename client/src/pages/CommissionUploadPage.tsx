@@ -1,6 +1,7 @@
 import { useRef, useState, useMemo } from 'react';
 import Icon from '../components/ui/Icon';
 import { useDataStore } from '../store/dataStore';
+import CompanyLogo from '../components/common/CompanyLogo';
 
 interface ParsedRecord {
   reportType: string;
@@ -34,6 +35,21 @@ interface ParseResult {
   errors: { row: number; message: string }[];
   detectedCompany: string | null;
 }
+
+type InsuranceCompanyCode = 'harel' | 'menora' | 'phoenix' | 'analyst';
+
+interface InsuranceCompanyOption {
+  code: InsuranceCompanyCode;
+  label: string;
+  initial: string;
+}
+
+const INSURANCE_COMPANIES: InsuranceCompanyOption[] = [
+  { code: 'harel', label: 'הראל', initial: 'ה' },
+  { code: 'menora', label: 'מנורה מבטחים', initial: 'מ' },
+  { code: 'phoenix', label: 'הפניקס', initial: 'פ' },
+  { code: 'analyst', label: 'אנליסט', initial: 'א' },
+];
 
 interface ParseMeta {
   detectedCompany: string | null;
@@ -99,13 +115,25 @@ export default function CommissionUploadPage() {
   }, [policies]);
 
   const [isDragging, setIsDragging] = useState(false);
-  const [selectedCompany, setSelectedCompany] = useState('');
+  const [selectedCompany, setSelectedCompany] = useState<InsuranceCompanyCode | ''>('');
   const [parsing, setParsing] = useState(false);
   const [parseResults, setParseResults] = useState<ParseResult[] | null>(null);
   const [parseMeta, setParseMeta] = useState<ParseMeta | null>(null);
   const [parseError, setParseError] = useState<string | null>(null);
+  const [parseWarning, setParseWarning] = useState<string | null>(null);
   const [agreementData, setAgreementData] = useState<AgreementData | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
+
+  function handleCompanySelect(code: InsuranceCompanyCode) {
+    if (code === selectedCompany) return;
+    setSelectedCompany(code);
+    setParseResults(null);
+    setParseMeta(null);
+    setParseError(null);
+    setParseWarning(null);
+    setAgreementData(null);
+    if (fileInputRef.current) fileInputRef.current.value = '';
+  }
 
   function handleDragOver(e: React.DragEvent) {
     e.preventDefault();
@@ -119,6 +147,10 @@ export default function CommissionUploadPage() {
   function handleDrop(e: React.DragEvent) {
     e.preventDefault();
     setIsDragging(false);
+    if (!selectedCompany) {
+      setParseError('בחר חברת ביטוח קודם');
+      return;
+    }
     const files = Array.from(e.dataTransfer.files);
     if (files.length > 0) processFile(files[0]);
   }
@@ -147,6 +179,7 @@ export default function CommissionUploadPage() {
   async function parseExcelFile(file: File) {
     setParsing(true);
     setParseError(null);
+    setParseWarning(null);
     setParseResults(null);
     setParseMeta(null);
     setAgreementData(null);
@@ -154,6 +187,7 @@ export default function CommissionUploadPage() {
     try {
       const formData = new FormData();
       formData.append('file', file);
+      if (selectedCompany) formData.append('insuranceCompany', selectedCompany);
 
       const token = localStorage.getItem('agora-token');
       const response = await fetch('/api/v1/uploads/parse', {
@@ -177,6 +211,10 @@ export default function CommissionUploadPage() {
         return;
       }
 
+      if (json.meta?.warning) {
+        setParseWarning(json.meta.warning as string);
+      }
+
       if (json.meta?.isAgreement) {
         const rates = (json.data as AgreementRate[]) ?? [];
         const detectedCompany = json.meta?.detectedCompany ?? null;
@@ -189,9 +227,6 @@ export default function CommissionUploadPage() {
           validTo: json.meta?.validTo ?? null,
           fileName: file.name,
         });
-        if (detectedCompany && !selectedCompany) {
-          setSelectedCompany(detectedCompany);
-        }
         addUpload({
           id: crypto.randomUUID(),
           fileName: file.name,
@@ -209,9 +244,8 @@ export default function CommissionUploadPage() {
       const totalRecords = results.reduce((s: number, r: ParseResult) => s + r.records.length, 0);
       const detectedCompany = (json.meta?.detectedCompany as string | null)
         ?? results.find((r) => r.detectedCompany)?.detectedCompany ?? null;
-      const company = selectedCompany || detectedCompany || 'זוהה אוטומטית';
+      const company = detectedCompany || selectedCompany || 'זוהה אוטומטית';
 
-      // Extract agent number from first record that has it
       const firstAgentNumber = results
         .flatMap((r) => r.records)
         .find((rec) => rec.agentNumber)?.agentNumber ?? json.meta?.agentNumber ?? null;
@@ -226,11 +260,6 @@ export default function CommissionUploadPage() {
         skippedDueMismatch: json.meta?.skippedDueMismatch ?? 0,
         mismatchWarning: json.meta?.mismatchWarning ?? null,
       });
-
-      // Auto-set company if detected and not already selected
-      if (detectedCompany && !selectedCompany) {
-        setSelectedCompany(detectedCompany);
-      }
 
       addUpload({
         id: crypto.randomUUID(),
@@ -291,17 +320,46 @@ export default function CommissionUploadPage() {
                 onChange={handleFileSelect}
               />
 
+              {/* Company Selection */}
+              <div>
+                <p className="text-xs font-black uppercase tracking-widest text-on-surface-variant mb-3">
+                  בחר חברת ביטוח
+                </p>
+                <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+                  {INSURANCE_COMPANIES.map((co) => {
+                    const isSelected = selectedCompany === co.code;
+                    return (
+                      <button
+                        key={co.code}
+                        type="button"
+                        onClick={() => handleCompanySelect(co.code)}
+                        className={`flex items-center gap-3 px-4 py-3 rounded-lg border-2 text-start transition-all ${
+                          isSelected
+                            ? 'border-secondary bg-secondary-container/30 text-on-surface'
+                            : 'border-outline-variant bg-surface-container-low text-on-surface-variant hover:border-secondary/50 hover:bg-secondary-container/10'
+                        }`}
+                      >
+                        <CompanyLogo company={co.code} size="md" />
+                        <span className="font-bold text-sm leading-tight">{co.label}</span>
+                      </button>
+                    );
+                  })}
+                </div>
+              </div>
+
               {/* Drag & Drop */}
               <div
-                className={`border-2 border-dashed rounded-lg p-12 flex flex-col items-center justify-center text-center space-y-4 cursor-pointer group transition-colors ${
-                  isDragging
-                    ? 'border-primary bg-primary-fixed/30'
-                    : 'border-outline-variant hover:bg-primary-fixed/20'
+                className={`border-2 border-dashed rounded-lg p-12 flex flex-col items-center justify-center text-center space-y-4 transition-colors ${
+                  !selectedCompany
+                    ? 'border-outline-variant/40 opacity-50 cursor-not-allowed'
+                    : isDragging
+                    ? 'border-primary bg-primary-fixed/30 cursor-pointer'
+                    : 'border-outline-variant hover:bg-primary-fixed/20 cursor-pointer group'
                 }`}
-                onDragOver={handleDragOver}
+                onDragOver={(e) => { if (selectedCompany) handleDragOver(e); else e.preventDefault(); }}
                 onDragLeave={handleDragLeave}
                 onDrop={handleDrop}
-                onClick={() => fileInputRef.current?.click()}
+                onClick={() => { if (selectedCompany) fileInputRef.current?.click(); }}
               >
                 {parsing ? (
                   <>
@@ -311,13 +369,12 @@ export default function CommissionUploadPage() {
                   </>
                 ) : (
                   <>
-                    <div className="w-16 h-16 bg-primary-fixed rounded-full flex items-center justify-center text-primary mb-2 group-hover:scale-110 transition-transform">
+                    <div className={`w-16 h-16 bg-primary-fixed rounded-full flex items-center justify-center text-primary mb-2 ${selectedCompany ? 'group-hover:scale-110' : ''} transition-transform`}>
                       <Icon name="cloud_upload" size="lg" />
                     </div>
                     <h3 className="text-xl font-bold text-primary">גרור ושחרר קבצים כאן</h3>
                     <p className="text-on-surface-variant max-w-sm">
                       תמיכה בקבצי <strong>XLS, XLSX</strong> (הראל, הפניקס, אנליסט), <strong>ZIP</strong> (מנורה), <strong>CSV</strong> ו-<strong>PDF</strong> (הסכמי עמלות).
-                      המערכת מזהה אוטומטית את חברת הביטוח וסוג הדוח.
                     </p>
                     <div className="flex gap-3 mt-4">
                       <span className="bg-primary-fixed text-primary text-xs font-bold px-3 py-1 rounded-full">.xls</span>
@@ -327,10 +384,11 @@ export default function CommissionUploadPage() {
                       <span className="bg-primary-fixed text-primary text-xs font-bold px-3 py-1 rounded-full">.pdf</span>
                     </div>
                     <button
-                      className="mt-4 bg-primary text-on-primary px-8 py-3 rounded-lg font-bold hover:shadow-lg transition-all"
-                      onClick={(e) => { e.stopPropagation(); fileInputRef.current?.click(); }}
+                      disabled={!selectedCompany}
+                      className="mt-4 bg-primary text-on-primary px-8 py-3 rounded-lg font-bold hover:shadow-lg transition-all disabled:opacity-40 disabled:cursor-not-allowed disabled:shadow-none"
+                      onClick={(e) => { e.stopPropagation(); if (selectedCompany) fileInputRef.current?.click(); }}
                     >
-                      בחר קובץ מהמחשב
+                      {selectedCompany ? 'בחר קובץ מהמחשב' : 'בחר חברת ביטוח קודם'}
                     </button>
                   </>
                 )}
@@ -345,6 +403,17 @@ export default function CommissionUploadPage() {
               <div>
                 <p className="font-bold mb-1">שגיאה בעיבוד הקובץ</p>
                 <p className="text-sm">{parseError}</p>
+              </div>
+            </div>
+          )}
+
+          {/* Company mismatch warning */}
+          {parseWarning && (
+            <div className="bg-tertiary-container/40 border border-tertiary/30 text-on-surface p-5 rounded-lg flex items-start gap-3">
+              <Icon name="warning" className="text-tertiary mt-0.5 shrink-0" />
+              <div>
+                <p className="font-bold text-sm mb-0.5">שים לב</p>
+                <p className="text-sm text-on-surface-variant">{parseWarning}</p>
               </div>
             </div>
           )}

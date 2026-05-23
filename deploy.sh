@@ -2,6 +2,7 @@
 set -e
 
 APP_DIR="/var/www/payagent"
+USER="admin"
 
 echo "=== Agora Deploy ==="
 

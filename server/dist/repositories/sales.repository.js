@@ -8,6 +8,8 @@ exports.getSalesTransactions = getSalesTransactions;
 exports.searchClients = searchClients;
 exports.getClientTransactions = getClientTransactions;
 exports.getPortfolioAnalysis = getPortfolioAnalysis;
+exports.getSalesWithContractStatus = getSalesWithContractStatus;
+exports.getContractCoverageSummary = getContractCoverageSummary;
 exports.getMonthlySalarySummary = getMonthlySalarySummary;
 const database_js_1 = __importDefault(require("../config/database.js"));
 // Only these report types represent individual policy-level records.
@@ -127,20 +129,25 @@ async function searchClients(agentId, search, limit = 50) {
            COUNT(DISTINCT processing_month) AS months_active,
            COUNT(*) AS record_count,
            MAX(processing_month) AS last_month,
-           GROUP_CONCAT(DISTINCT insurance_company) AS insurance_companies,
+           (SELECT GROUP_CONCAT(DISTINCT t.insurance_company)
+            FROM sales_transactions t
+            WHERE t.agent_id = ?
+              AND TRIM(REGEXP_REPLACE(t.insured_name, '[[:space:]]+', ' ')) = TRIM(REGEXP_REPLACE(s.insured_name, '[[:space:]]+', ' '))
+              AND t.insurance_company IS NOT NULL
+              AND t.insurance_company != '') AS insurance_companies,
            GROUP_CONCAT(DISTINCT CONCAT(branch, '/', COALESCE(product_name,''))) AS products
-    FROM sales_transactions
-    WHERE agent_id = ?
-      AND report_type IN ${POLICY_REPORT_TYPES}
-      AND insured_name IS NOT NULL
-      AND insured_name != ''`;
-    const params = [agentId];
+    FROM sales_transactions s
+    WHERE s.agent_id = ?
+      AND s.report_type IN ${POLICY_REPORT_TYPES}
+      AND s.insured_name IS NOT NULL
+      AND s.insured_name != ''`;
+    const params = [agentId, agentId];
     if (search && search.trim()) {
         const term = `%${search.trim()}%`;
-        sql += ' AND (insured_name LIKE ? OR insured_id LIKE ?)';
+        sql += ' AND (s.insured_name LIKE ? OR s.insured_id LIKE ?)';
         params.push(term, term);
     }
-    sql += ' GROUP BY insured_name ORDER BY last_month DESC, total_commission DESC LIMIT ?';
+    sql += ' GROUP BY s.insured_name ORDER BY last_month DESC, total_commission DESC LIMIT ?';
     params.push(limit);
     const [rows] = await database_js_1.default.query(sql, params);
     return rows.map((r) => {
@@ -371,6 +378,84 @@ async function getPortfolioAnalysis(agentId) {
         concentration,
         atRisk,
         newClients,
+    };
+}
+function toSalesTransactionWithContract(row) {
+    return {
+        ...toSalesTransaction(row),
+        contractStatus: row.aar_id != null ? 'covered' : 'uncovered',
+        agreedRate: row.aar_rate != null ? Number(row.aar_rate) : null,
+        agreedCommissionType: row.aar_commission_type ?? null,
+    };
+}
+/**
+ * Sales transactions enriched with agreement-rate coverage status.
+ * "covered" = agent has an uploaded agreement rate for this company + branch.
+ * Pagination: limit/offset apply to the filtered result set.
+ */
+async function getSalesWithContractStatus(agentId, opts = {}) {
+    const { month, limit = 500, offset = 0 } = opts;
+    const params = [agentId];
+    let monthFilter = '';
+    if (month) {
+        monthFilter = ' AND s.processing_month = ?';
+        params.push(month);
+    }
+    params.push(limit, offset);
+    const sql = `
+    SELECT
+      s.id, s.agent_id, s.insurance_company, s.report_type,
+      s.processing_month, s.production_month,
+      s.insured_name, s.insured_id, s.employer_name, s.employer_id,
+      s.policy_number, s.branch, s.sub_branch, s.product_name,
+      s.fund_type, s.plan_type, s.premium, s.commission_amount,
+      s.commission_rate, s.collection_fee, s.advance_amount,
+      s.advance_balance, s.payment_amount, s.amount_before_vat,
+      s.amount_with_vat, s.accumulation_balance, s.management_fee_pct,
+      s.management_fee_amount, s.transaction_type, s.created_at,
+      aar.id        AS aar_id,
+      aar.rate      AS aar_rate,
+      aar.commission_type AS aar_commission_type
+    FROM sales_transactions s
+    LEFT JOIN agent_agreement_rates aar
+      ON  aar.agent_id = s.agent_id
+      AND aar.company  = s.insurance_company
+      AND aar.product  = s.branch
+    WHERE s.agent_id = ?${monthFilter}
+    ORDER BY s.processing_month DESC, s.created_at DESC
+    LIMIT ? OFFSET ?`;
+    const [rows] = await database_js_1.default.query(sql, params);
+    return rows.map(toSalesTransactionWithContract);
+}
+/**
+ * Aggregated coverage summary for the agent, optionally scoped to a month.
+ */
+async function getContractCoverageSummary(agentId, opts = {}) {
+    const params = [agentId];
+    let monthFilter = '';
+    if (opts.month) {
+        monthFilter = ' AND s.processing_month = ?';
+        params.push(opts.month);
+    }
+    const sql = `
+    SELECT
+      COUNT(CASE WHEN aar.id IS NOT NULL THEN 1 END)                             AS covered_count,
+      COUNT(CASE WHEN aar.id IS NULL     THEN 1 END)                             AS uncovered_count,
+      COALESCE(SUM(CASE WHEN aar.id IS NOT NULL THEN s.commission_amount END), 0) AS covered_amount,
+      COALESCE(SUM(CASE WHEN aar.id IS NULL     THEN s.commission_amount END), 0) AS uncovered_amount
+    FROM sales_transactions s
+    LEFT JOIN agent_agreement_rates aar
+      ON  aar.agent_id = s.agent_id
+      AND aar.company  = s.insurance_company
+      AND aar.product  = s.branch
+    WHERE s.agent_id = ?${monthFilter}`;
+    const [rows] = await database_js_1.default.query(sql, params);
+    const r = rows[0];
+    return {
+        coveredCount: Number(r?.covered_count) || 0,
+        uncoveredCount: Number(r?.uncovered_count) || 0,
+        coveredAmount: Number(r?.covered_amount) || 0,
+        uncoveredAmount: Number(r?.uncovered_amount) || 0,
     };
 }
 async function getMonthlySalarySummary(agentId) {

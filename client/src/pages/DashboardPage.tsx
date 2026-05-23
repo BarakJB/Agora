@@ -1,38 +1,24 @@
 import { useState, useMemo, useEffect, useRef, useCallback } from 'react';
+import { useNavigate } from 'react-router-dom';
 import Icon from '../components/ui/Icon';
+import CompanyLogo from '../components/common/CompanyLogo';
+import { TrafficLightPill } from '../components/common/TrafficLight';
+import { MetricCard } from '../components/common/MetricCard';
 import { useAuthStore } from '../store/authStore';
 import type { CommissionRow } from '../store/dataStore';
 import * as api from '../services/api';
-
-/* ─── Helpers ─── */
-const HEBREW_MONTHS = ['ינואר','פברואר','מרץ','אפריל','מאי','יוני','יולי','אוגוסט','ספטמבר','אוקטובר','נובמבר','דצמבר'];
-
-function formatMonth(key: string): string {
-  const [year, month] = key.split('-');
-  return `${HEBREW_MONTHS[parseInt(month) - 1]} ${year}`;
-}
-
-function normalizeMonth(raw: string): string {
-  if (!raw) return '';
-  if (/^\d{4}-\d{2}$/.test(raw)) return raw;
-  const m = raw.match(/^(\d{1,2})[/-](\d{4})$/);
-  if (m) return `${m[2]}-${m[1].padStart(2, '0')}`;
-  const d = raw.match(/^\d{1,2}[/-](\d{1,2})[/-](\d{4})$/);
-  if (d) return `${d[2]}-${d[1].padStart(2, '0')}`;
-  return '';
-}
-
-const fmt = (n: number) => n.toLocaleString('he-IL', { maximumFractionDigits: 0 });
-
-const REPORT_TYPE_HE: Record<string, string> = {
-  nifraim: 'נפרעים',
-  hekef: 'היקף',
-  agent_data: 'צבירה (פירוט)',
-  accumulation_nifraim: 'נפרעים צבירה',
-  accumulation_hekef: 'היקף צבירה',
-  product_distribution: 'סיכום תשלום',
-  branch_distribution: 'היקף',
-};
+import { detectAnomalies, anomalyKey } from '../utils/anomalies';
+import type { Anomaly } from '../utils/anomalies';
+import { formatMonth, normalizeMonth, fmt } from '../utils/dateFormat';
+import { mapToCommissionRow } from '../utils/commissionMapper';
+import {
+  evaluateMonthVsAvg,
+  evaluateConcentrationTop5,
+  evaluateAtRiskCount,
+  evaluateMonthlyTrend,
+} from '../utils/profitThresholds';
+import type { TrendValue } from '../utils/profitThresholds';
+import type { NavigateFunction } from 'react-router-dom';
 
 /* Commission type breakdown config */
 interface BreakdownType {
@@ -105,28 +91,6 @@ const COMMISSION_TYPES: BreakdownType[] = [
 /* All salary-contributing report type labels */
 const ALL_SALARY_TYPES = new Set(COMMISSION_TYPES.map(t => t.key));
 
-type SalesRecord = api.SalesTransaction;
-
-function mapToCommissionRow(s: SalesRecord): CommissionRow {
-  const name = s.insuredName || '';
-  return {
-    id: s.id,
-    policyId: s.policyNumber || '',
-    clientName: name,
-    clientInitials: name.trim().split(' ').map(w => w[0] || '').join('').slice(0, 2),
-    type: (s.reportType === 'hekef' || s.reportType === 'accumulation_hekef') ? 'one_time' : 'recurring',
-    typeHe: REPORT_TYPE_HE[s.reportType] || s.reportType,
-    amount: s.commissionAmount,
-    insuranceCompany: s.insuranceCompany,
-    date: s.processingMonth,
-    processingMonth: s.processingMonth,
-    productTypeHe: s.productName || s.branch || s.fundType || '',
-    clientIdNumber: s.insuredId || '',
-    branch: s.branch || '',
-    premiumAmount: s.premium ?? 0,
-  };
-}
-
 /* ─── Main Component ─── */
 export default function DashboardPage() {
   const profile = useAuthStore((s) => s.profile);
@@ -143,6 +107,7 @@ export default function DashboardPage() {
   const [tableExpanded, setTableExpanded] = useState(true);
   const [salaryExpanded, setSalaryExpanded] = useState(false);
   const [showNetOfCover, setShowNetOfCover] = useState(false);
+  const [portfolioData, setPortfolioData] = useState<api.PortfolioAnalysis | null>(null);
 
   // Load from DB — called on every mount and after upload
   const loadFromDb = useCallback(async () => {
@@ -150,10 +115,13 @@ export default function DashboardPage() {
     setLoading(true);
     setError(null);
     try {
-      const res = await api.getSalesTransactions();
-      const records = (res.data || []).map(mapToCommissionRow);
-      console.log('[Dashboard] Loaded from DB:', records.length, 'records');
+      const [salesRes, portfolioRes] = await Promise.all([
+        api.getSalesTransactions(),
+        api.getPortfolioAnalysis(),
+      ]);
+      const records = (salesRes.data || []).map(mapToCommissionRow);
       setCommissions(records);
+      if (portfolioRes.data) setPortfolioData(portfolioRes.data);
     } catch (err) {
       const msg = err instanceof api.ApiError && err.status === 401
         ? 'פג תוקף ההתחברות. יש להתחבר מחדש.'
@@ -241,6 +209,35 @@ export default function DashboardPage() {
 
   const totalAll = commissions.reduce((s, c) => s + c.amount, 0);
 
+  const historicalAverage = useMemo(() => {
+    if (monthlyTotals.length === 0) return 0;
+    return monthlyTotals.reduce((s, m) => s + m.total, 0) / monthlyTotals.length;
+  }, [monthlyTotals]);
+
+  const monthVsAvgLevel = useMemo(
+    () => evaluateMonthVsAvg(monthTotal, historicalAverage),
+    [monthTotal, historicalAverage],
+  );
+
+  const portfolioConcentrationLevel = useMemo(
+    () => portfolioData ? evaluateConcentrationTop5(portfolioData.concentration.top5Pct) : null,
+    [portfolioData],
+  );
+
+  const portfolioAtRiskLevel = useMemo(
+    () => portfolioData ? evaluateAtRiskCount(portfolioData.atRisk.length) : null,
+    [portfolioData],
+  );
+
+  const portfolioTrendLevel = useMemo(() => {
+    if (!portfolioData || portfolioData.monthlyTrend.length < 2) return null;
+    const trend = portfolioData.monthlyTrend;
+    const last = trend[trend.length - 1].total;
+    const prev = trend[trend.length - 2].total;
+    const derived: TrendValue = last > prev * 1.02 ? 'up' : last < prev * 0.98 ? 'down' : 'stable';
+    return evaluateMonthlyTrend(derived);
+  }, [portfolioData]);
+
   // Breakdown by commission type
   const breakdown = useMemo(() => {
     const map: Record<string, { count: number; total: number }> = {};
@@ -267,12 +264,12 @@ export default function DashboardPage() {
 
   // Breakdown as array for salary detail — grouped by type + company
   const breakdownList = useMemo(() => {
-    const map: Record<string, { count: number; total: number }> = {};
+    const map: Record<string, { count: number; total: number; company: string }> = {};
     filtered.forEach(c => {
       const typeName = c.typeHe || 'אחר';
       const company = c.insuranceCompany || '';
       const key = company ? `${typeName} — ${company}` : typeName;
-      if (!map[key]) map[key] = { count: 0, total: 0 };
+      if (!map[key]) map[key] = { count: 0, total: 0, company };
       map[key].count++;
       map[key].total += c.amount;
     });
@@ -280,195 +277,18 @@ export default function DashboardPage() {
   }, [filtered]);
 
   // ─── Anomaly Detection ───
-  interface AnomalyClient {
-    name: string;
-    id: string;
-    amount: number;
-    product: string;
-  }
+  const allAnomalies = useMemo(
+    () => detectAnomalies(commissions, availableMonths),
+    [commissions, availableMonths],
+  );
 
-  interface Anomaly {
-    type: 'total_drop' | 'client_lost' | 'client_negative' | 'client_spike' | 'total_spike';
-    severity: 'high' | 'medium' | 'low';
-    icon: string;
-    message: string;
-    detail: string;
-    clients?: AnomalyClient[];
-  }
-
-  const anomalies = useMemo((): Anomaly[] => {
-    if (availableMonths.length < 2) return [];
-    const alerts: Anomaly[] = [];
-
-    // Find months that have nifraim data specifically
-    const nifraimMonths = availableMonths.filter(m =>
-      commissions.some(c => c.processingMonth === m && c.typeHe === 'נפרעים')
-    );
-
-    // 1. Compare consecutive nifraim months (not all months)
-    for (let i = 1; i < nifraimMonths.length; i++) {
-      const currMonth = nifraimMonths[i];
-      const prevMonth = nifraimMonths[i - 1];
-      const currNifraim = commissions.filter(c => c.processingMonth === currMonth && c.typeHe === 'נפרעים');
-      const prevNifraim = commissions.filter(c => c.processingMonth === prevMonth && c.typeHe === 'נפרעים');
-
-      if (prevNifraim.length === 0 || currNifraim.length === 0) continue;
-
-      const currTotal = currNifraim.reduce((s, c) => s + c.amount, 0);
-      const prevTotal = prevNifraim.reduce((s, c) => s + c.amount, 0);
-
-      // Nifraim should generally grow — drop is suspicious
-      if (prevTotal > 0 && currTotal < prevTotal * 0.9) {
-        const dropPct = Math.round(((prevTotal - currTotal) / prevTotal) * 100);
-        alerts.push({
-          type: 'total_drop',
-          severity: dropPct > 20 ? 'high' : 'medium',
-          icon: 'trending_down',
-          message: `ירידה בנפרעים: ${formatMonth(prevMonth)} → ${formatMonth(currMonth)}`,
-          detail: `${fmt(Math.round(prevTotal))}₪ → ${fmt(Math.round(currTotal))}₪ (ירידה של ${dropPct}%). נפרעים צפויים לעלות עם הצטרפות לקוחות חדשים.`,
-        });
-      }
-
-      // 2. Lost clients (in prev but not in curr) — with product details
-      const prevClients = new Map<string, { name: string; id: string; amount: number; products: Set<string> }>();
-      prevNifraim.forEach(c => {
-        const key = c.clientIdNumber || c.clientName;
-        if (!key) return;
-        const existing = prevClients.get(key);
-        if (existing) {
-          existing.amount += c.amount;
-          if (c.productTypeHe || c.branch) existing.products.add(c.productTypeHe || c.branch || '');
-        } else {
-          const products = new Set<string>();
-          if (c.productTypeHe || c.branch) products.add(c.productTypeHe || c.branch || '');
-          prevClients.set(key, { name: c.clientName, id: c.clientIdNumber || '', amount: c.amount, products });
-        }
-      });
-
-      const currClients = new Set(currNifraim.map(c => c.clientIdNumber || c.clientName).filter(Boolean));
-
-      const lostClients: AnomalyClient[] = [];
-      prevClients.forEach((data, key) => {
-        if (!currClients.has(key) && data.amount >= 10) {
-          lostClients.push({
-            name: data.name,
-            id: data.id,
-            amount: data.amount,
-            product: Array.from(data.products).join(', ') || '—',
-          });
-        }
-      });
-
-      if (lostClients.length > 0) {
-        const totalLost = lostClients.reduce((s, c) => s + c.amount, 0);
-        alerts.push({
-          type: 'client_lost',
-          severity: totalLost > 100 ? 'high' : 'medium',
-          icon: 'person_off',
-          message: `${lostClients.length} לקוחות לא מופיעים ב${formatMonth(currMonth)}`,
-          detail: `אובדן הכנסה של ${fmt(Math.round(totalLost))}₪`,
-          clients: lostClients.sort((a, b) => b.amount - a.amount),
-        });
-      }
-
-      // 3. Per-client revenue drop >= 20₪
-      // Group current month by client
-      const currClientMap = new Map<string, { name: string; id: string; amount: number; products: Set<string> }>();
-      currNifraim.forEach(c => {
-        const key = c.clientIdNumber || c.clientName;
-        if (!key) return;
-        const existing = currClientMap.get(key);
-        if (existing) {
-          existing.amount += c.amount;
-          if (c.productTypeHe || c.branch) existing.products.add(c.productTypeHe || c.branch || '');
-        } else {
-          const products = new Set<string>();
-          if (c.productTypeHe || c.branch) products.add(c.productTypeHe || c.branch || '');
-          currClientMap.set(key, { name: c.clientName, id: c.clientIdNumber || '', amount: c.amount, products });
-        }
-      });
-
-      const droppedClients: AnomalyClient[] = [];
-      prevClients.forEach((prevData, key) => {
-        const currData = currClientMap.get(key);
-        if (!currData) return; // Already covered in "lost clients"
-        const drop = prevData.amount - currData.amount;
-        if (drop >= 20) {
-          droppedClients.push({
-            name: prevData.name,
-            id: prevData.id,
-            amount: -drop, // negative = how much lost
-            product: `${fmt(Math.round(prevData.amount))}₪ → ${fmt(Math.round(currData.amount))}₪ (${Array.from(currData.products).join(', ') || '—'})`,
-          });
-        }
-      });
-
-      if (droppedClients.length > 0) {
-        const totalDrop = droppedClients.reduce((s, c) => s + Math.abs(c.amount), 0);
-        alerts.push({
-          type: 'client_spike',
-          severity: totalDrop > 200 ? 'high' : droppedClients.length > 3 ? 'medium' : 'low',
-          icon: 'person_alert',
-          message: `${droppedClients.length} לקוחות עם ירידה מ${formatMonth(prevMonth)} ל${formatMonth(currMonth)}`,
-          detail: `לקוחות שההכנסה מהם ירדה ב-20₪ ומעלה. סה"כ ירידה: ${fmt(Math.round(totalDrop))}₪`,
-          clients: droppedClients.sort((a, b) => a.amount - b.amount), // most dropped first
-        });
-      }
-
-      // 4. Negative amounts (refunds/clawbacks) — with client details
-      const negatives = currNifraim.filter(c => c.amount < 0);
-      if (negatives.length > 0) {
-        const totalNeg = negatives.reduce((s, c) => s + c.amount, 0);
-        const negClients: AnomalyClient[] = negatives.map(c => ({
-          name: c.clientName,
-          id: c.clientIdNumber || '',
-          amount: c.amount,
-          product: c.productTypeHe || c.branch || '—',
-        }));
-        alerts.push({
-          type: 'client_negative',
-          severity: Math.abs(totalNeg) > 50 ? 'high' : 'low',
-          icon: 'warning',
-          message: `${negatives.length} החזרים/ביטולים ב${formatMonth(currMonth)}`,
-          detail: `סה"כ ${fmt(Math.round(Math.abs(totalNeg)))}₪ בהחזרים`,
-          clients: negClients.sort((a, b) => a.amount - b.amount),
-        });
-      }
-    }
-
-    // 4. Scan ALL months for negatives (not just compared ones)
-    for (const month of availableMonths) {
-      const monthNifraim = commissions.filter(c => c.processingMonth === month && c.typeHe === 'נפרעים');
-      // Skip if already covered in the comparison loop
-      if (nifraimMonths.length >= 2 && nifraimMonths.includes(month) && nifraimMonths.indexOf(month) > 0) continue;
-
-      const negatives = monthNifraim.filter(c => c.amount < 0);
-      if (negatives.length > 0) {
-        const totalNeg = negatives.reduce((s, c) => s + c.amount, 0);
-        const negClients: AnomalyClient[] = negatives.map(c => ({
-          name: c.clientName,
-          id: c.clientIdNumber || '',
-          amount: c.amount,
-          product: c.productTypeHe || c.branch || '—',
-        }));
-        alerts.push({
-          type: 'client_negative',
-          severity: Math.abs(totalNeg) > 50 ? 'high' : 'low',
-          icon: 'warning',
-          message: `${negatives.length} החזרים/ביטולים ב${formatMonth(month)}`,
-          detail: `סה"כ ${fmt(Math.round(Math.abs(totalNeg)))}₪ בהחזרים`,
-          clients: negClients.sort((a, b) => a.amount - b.amount),
-        });
-      }
-    }
-
-    return alerts.sort((a, b) => {
-      const sev = { high: 0, medium: 1, low: 2 };
-      return sev[a.severity] - sev[b.severity];
-    });
-  }, [commissions, availableMonths]);
+  const currentMonthAnomalies = useMemo(
+    () => allAnomalies.filter((a: Anomaly) => a.month === selectedMonth),
+    [allAnomalies, selectedMonth],
+  );
 
   const [showAnomalies, setShowAnomalies] = useState(true);
+  const navigate = useNavigate();
 
   function openUpload(mode: 'agreement' | 'sales') {
     setUploadMode(mode);
@@ -625,9 +445,14 @@ export default function DashboardPage() {
             {/* Main salary display */}
             <div className="relative z-10 p-5">
               <div className="flex items-center justify-between mb-3">
-                <p className="text-[10px] font-bold uppercase tracking-widest text-primary/60 font-headline">
-                  שכר {formatMonth(selectedMonth)}
-                </p>
+                <div className="flex items-center gap-2">
+                  <p className="text-[10px] font-bold uppercase tracking-widest text-primary/60 font-headline">
+                    שכר {formatMonth(selectedMonth)}
+                  </p>
+                  {historicalAverage > 0 && (
+                    <TrafficLightPill level={monthVsAvgLevel} size="sm" />
+                  )}
+                </div>
                 <select
                   value={selectedMonth}
                   onChange={(e) => setSelectedMonth(e.target.value)}
@@ -691,12 +516,16 @@ export default function DashboardPage() {
             {breakdownList.map(b => (
               <div key={b.type} className="flex items-center justify-between py-2">
                 <div className="flex items-center gap-2">
-                  <div className={`w-2 h-2 rounded-full ${
-                    b.type.includes('נפרעים') ? 'bg-primary' :
-                    b.type.includes('היקף') ? 'bg-secondary' :
-                    b.type.includes('צבירה') ? 'bg-on-tertiary-container' :
-                    'bg-on-surface-variant'
-                  }`} />
+                  {b.company ? (
+                    <CompanyLogo company={b.company} size="xs" />
+                  ) : (
+                    <div className={`w-2 h-2 rounded-full ${
+                      b.type.includes('נפרעים') ? 'bg-primary' :
+                      b.type.includes('היקף') ? 'bg-secondary' :
+                      b.type.includes('צבירה') ? 'bg-on-tertiary-container' :
+                      'bg-on-surface-variant'
+                    }`} />
+                  )}
                   <span className="text-sm text-on-surface">{b.type}</span>
                   <span className="text-xs text-on-surface-variant">({b.count})</span>
                 </div>
@@ -723,6 +552,58 @@ export default function DashboardPage() {
           <span className="text-sm font-bold text-on-secondary-container">סה״כ כל החודשים ({availableMonths.length})</span>
           <span className="text-xl font-black font-headline text-on-secondary-container">{fmt(totalAll)} &#8362;</span>
         </div>
+
+        {/* Portfolio health section */}
+        {portfolioData && (portfolioConcentrationLevel || portfolioAtRiskLevel || portfolioTrendLevel) && (
+          <div className="space-y-3">
+            <div className="flex items-center gap-2 px-1">
+              <Icon name="health_and_safety" size="sm" className="text-primary/60" />
+              <h3 className="text-sm font-black font-headline text-on-surface">בריאות התיק</h3>
+            </div>
+            <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+              {portfolioConcentrationLevel && (
+                <MetricCard
+                  title="ריכוז לקוחות מובילים"
+                  value={`${portfolioData.concentration.top5Pct}%`}
+                  subtitle={`5 לקוחות גדולים מתוך ${portfolioData.overview.totalClients} — ריכוז גבוה מגדיל סיכון`}
+                  level={portfolioConcentrationLevel}
+                  icon="pie_chart"
+                />
+              )}
+              {portfolioAtRiskLevel && (
+                <MetricCard
+                  title="לקוחות בסיכון"
+                  value={String(portfolioData.atRisk.length)}
+                  subtitle={portfolioData.atRisk.length === 0 ? 'אין לקוחות עם ירידה משמעותית' : `${portfolioData.atRisk.length} לקוחות עם ירידה בעמלות`}
+                  level={portfolioAtRiskLevel}
+                  icon="trending_down"
+                />
+              )}
+              {portfolioTrendLevel && portfolioData.monthlyTrend.length >= 2 && (() => {
+                const trend = portfolioData.monthlyTrend;
+                const last = trend[trend.length - 1].total;
+                const prev = trend[trend.length - 2].total;
+                const derived: TrendValue = last > prev * 1.02 ? 'up' : last < prev * 0.98 ? 'down' : 'stable';
+                const trendLabel = derived === 'up' ? 'עלייה' : derived === 'down' ? 'ירידה' : 'יציב';
+                return (
+                  <MetricCard
+                    title="מגמה חודשית"
+                    value={trendLabel}
+                    subtitle={`${fmt(Math.round(prev))}₪ → ${fmt(Math.round(last))}₪`}
+                    level={portfolioTrendLevel}
+                    trend={derived}
+                    icon="show_chart"
+                  />
+                );
+              })()}
+            </div>
+          </div>
+        )}
+
+        {/* Sales Potential hint */}
+        {portfolioData && portfolioData.overview.totalClients > 0 && (
+          <CrossSellHint navigate={navigate} clientCount={portfolioData.overview.totalClients} />
+        )}
 
         {/* Salary Breakdown by Commission Type */}
         {filtered.length > 0 && (
@@ -841,7 +722,14 @@ export default function DashboardPage() {
                       <td className="px-5 py-3 text-on-surface-variant">{row.typeHe}</td>
                       <td className="px-5 py-3 text-on-surface-variant">{row.branch || row.productTypeHe}</td>
                       <td className="px-5 py-3 text-on-surface-variant">{(row.premiumAmount ?? 0) > 0 ? `${fmt(row.premiumAmount ?? 0)}₪` : '—'}</td>
-                      <td className="px-5 py-3 text-on-surface-variant">{row.insuranceCompany}</td>
+                      <td className="px-5 py-3 text-on-surface-variant">
+                        {row.insuranceCompany ? (
+                          <div className="flex items-center gap-2">
+                            <CompanyLogo company={row.insuranceCompany} size="xs" />
+                            <span>{row.insuranceCompany}</span>
+                          </div>
+                        ) : '—'}
+                      </td>
                       <td className="px-5 py-3 text-start"><span className="font-black text-secondary">{fmt(row.amount)} &#8362;</span></td>
                     </tr>
                   ))}
@@ -868,7 +756,7 @@ export default function DashboardPage() {
         </div>
 
         {/* Anomalies / Alerts */}
-        {anomalies.length > 0 && (
+        {(currentMonthAnomalies.length > 0 || allAnomalies.length > 0) && (
           <div className="bg-surface-container-low rounded-lg overflow-hidden">
             <button
               onClick={() => setShowAnomalies(!showAnomalies)}
@@ -879,18 +767,26 @@ export default function DashboardPage() {
                   <Icon name="notifications_active" size="sm" className="text-error" />
                 </div>
                 <span className="text-base font-black font-headline text-on-surface">
-                  התראות ואי-סדרים
+                  התראות ואי-סדרים — {formatMonth(selectedMonth)}
                 </span>
-                <span className="bg-error text-on-error text-xs font-bold px-2 py-0.5 rounded-full">{anomalies.length}</span>
+                {currentMonthAnomalies.length > 0 && (
+                  <span className="bg-error text-on-error text-xs font-bold px-2 py-0.5 rounded-full">{currentMonthAnomalies.length}</span>
+                )}
               </div>
               <Icon name={showAnomalies ? 'expand_less' : 'expand_more'} className="text-on-surface-variant" />
             </button>
 
             {showAnomalies && (
               <div className="p-4 space-y-3">
-                {anomalies.map((alert, i) => (
+                {currentMonthAnomalies.length === 0 && allAnomalies.length > 0 && (
+                  <div className="flex items-center gap-2 px-2 py-3 text-sm text-on-surface-variant">
+                    <Icon name="check_circle" size="sm" className="text-secondary shrink-0" />
+                    <span>אין התראות לחודש זה. עבור לחודש אחר לצפייה בהתראות נוספות.</span>
+                  </div>
+                )}
+                {currentMonthAnomalies.map((alert, i) => (
                   <div
-                    key={i}
+                    key={anomalyKey(alert, i)}
                     className={`rounded-lg overflow-hidden ${
                       alert.severity === 'high' ? 'bg-error-container/30' :
                       alert.severity === 'medium' ? 'bg-tertiary-fixed/30' :
@@ -965,6 +861,50 @@ export default function DashboardPage() {
             )}
           </div>
         )}
+
+        {/* Anomalies widget — top 3 high-severity across all months */}
+        {(() => {
+          const topAlerts = allAnomalies.filter(a => a.severity === 'high').slice(0, 3);
+          if (topAlerts.length === 0) return null;
+          return (
+            <div className="bg-surface-container-low rounded-lg overflow-hidden border border-[#B91C1C]/20">
+              <div className="px-5 py-4 bg-error-container/20 flex items-center justify-between">
+                <div className="flex items-center gap-3">
+                  <div className="w-8 h-8 rounded-full bg-error-container flex items-center justify-center shrink-0">
+                    <Icon name="notification_important" size="sm" className="text-error" />
+                  </div>
+                  <span className="text-base font-black font-headline text-on-surface">חריגות אחרונות</span>
+                  <span className="bg-error text-on-error text-xs font-bold px-2 py-0.5 rounded-full">
+                    {allAnomalies.filter(a => a.severity === 'high').length}
+                  </span>
+                </div>
+                <button
+                  onClick={() => navigate('/anomalies')}
+                  className="text-sm font-bold text-primary hover:underline flex items-center gap-1"
+                >
+                  ראה הכל
+                  <Icon name="arrow_back" size="sm" />
+                </button>
+              </div>
+              <div className="p-3 space-y-2">
+                {topAlerts.map((alert, i) => (
+                  <div
+                    key={`widget-${alert.month}-${alert.type}-${i}`}
+                    className="bg-error-container/15 rounded-lg p-3 flex items-start gap-3 border-r-4 border-r-[#B91C1C]"
+                  >
+                    <div className="w-7 h-7 rounded-full bg-error-container flex items-center justify-center shrink-0">
+                      <Icon name={alert.icon} size="sm" className="text-error" />
+                    </div>
+                    <div className="flex-1 min-w-0">
+                      <p className="font-bold text-sm text-error">{alert.message}</p>
+                      <p className="text-xs text-on-surface-variant mt-0.5 leading-relaxed truncate">{alert.detail}</p>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </div>
+          );
+        })()}
 
         {/* Salary History */}
         {monthlyTotals.length > 0 && (
@@ -1048,6 +988,21 @@ interface UploadedFile {
   error?: string;
 }
 
+type InsuranceCompanyCode = 'harel' | 'menora' | 'phoenix' | 'analyst';
+
+interface InsuranceCompanyOption {
+  code: InsuranceCompanyCode;
+  label: string;
+  initial: string;
+}
+
+const UPLOAD_MODAL_COMPANIES: InsuranceCompanyOption[] = [
+  { code: 'harel', label: 'הראל', initial: 'ה' },
+  { code: 'menora', label: 'מנורה מבטחים', initial: 'מ' },
+  { code: 'phoenix', label: 'הפניקס', initial: 'פ' },
+  { code: 'analyst', label: 'אנליסט', initial: 'א' },
+];
+
 function UploadModal({ open, mode, onComplete, onClose }: {
   open: boolean;
   mode: 'agreement' | 'sales';
@@ -1057,6 +1012,7 @@ function UploadModal({ open, mode, onComplete, onClose }: {
   const [uploading, setUploading] = useState(false);
   const [uploadedFiles, setUploadedFiles] = useState<UploadedFile[]>([]);
   const [error, setError] = useState<string | null>(null);
+  const [selectedCompany, setSelectedCompany] = useState<InsuranceCompanyCode | null>(null);
   const fileRef = useRef<HTMLInputElement>(null);
   const [isDragging, setIsDragging] = useState(false);
 
@@ -1074,6 +1030,7 @@ function UploadModal({ open, mode, onComplete, onClose }: {
     if (open) {
       setUploadedFiles([]);
       setError(null);
+      setSelectedCompany(null);
     }
   }, [open]);
 
@@ -1094,6 +1051,10 @@ function UploadModal({ open, mode, onComplete, onClose }: {
   }
 
   async function processFile(file: File) {
+    if (!selectedCompany) {
+      setError('יש לבחור חברת ביטוח לפני העלאת קובץ');
+      return;
+    }
     setUploading(true);
     setError(null);
 
@@ -1101,6 +1062,7 @@ function UploadModal({ open, mode, onComplete, onClose }: {
       const token = localStorage.getItem('agora-token');
       const fd = new FormData();
       fd.append('file', file);
+      fd.append('insuranceCompany', selectedCompany);
 
       const res = await fetch('/api/v1/uploads/parse', {
         method: 'POST',
@@ -1198,25 +1160,75 @@ function UploadModal({ open, mode, onComplete, onClose }: {
               if (fileRef.current) fileRef.current.value = '';
             }} />
 
+          {/* Company selection */}
+          <div>
+            <p className="text-xs font-black uppercase tracking-widest text-on-surface-variant mb-3">
+              {mode === 'agreement' ? 'בחר חברת ביטוח של ההסכם' : 'בחר חברת ביטוח'}
+            </p>
+            <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+              {UPLOAD_MODAL_COMPANIES.map((co) => {
+                const isSelected = selectedCompany === co.code;
+                return (
+                  <button
+                    key={co.code}
+                    type="button"
+                    onClick={() => { setSelectedCompany(co.code); setError(null); }}
+                    className={`flex items-center gap-3 px-4 py-3 rounded-lg border-2 text-start transition-all ${
+                      isSelected
+                        ? 'border-secondary bg-secondary-container/30 text-on-surface'
+                        : 'border-outline-variant bg-surface-container-low text-on-surface-variant hover:border-secondary/50 hover:bg-secondary-container/10'
+                    }`}
+                  >
+                    <CompanyLogo company={co.code} size="md" />
+                    <span className="font-bold text-sm leading-tight">{co.label}</span>
+                  </button>
+                );
+              })}
+            </div>
+          </div>
+
           {/* Drop zone */}
           <div
             role="button"
-            aria-label="גרור קבצים או לחץ לבחירה"
+            aria-label={selectedCompany ? 'גרור קבצים או לחץ לבחירה' : 'בחר חברת ביטוח קודם'}
+            aria-disabled={!selectedCompany}
             tabIndex={0}
-            onKeyDown={e => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); fileRef.current?.click(); } }}
-            className={`border-2 border-dashed rounded-lg p-8 flex flex-col items-center text-center cursor-pointer group transition-colors ${isDragging ? 'border-primary bg-primary-fixed/30' : 'border-outline-variant hover:bg-primary-fixed/20'}`}
-            onDragOver={e => { e.preventDefault(); setIsDragging(true); }}
+            onKeyDown={e => {
+              if (e.key === 'Enter' || e.key === ' ') {
+                e.preventDefault();
+                if (selectedCompany) { fileRef.current?.click(); } else { setError('יש לבחור חברת ביטוח לפני העלאת קובץ'); }
+              }
+            }}
+            className={`border-2 border-dashed rounded-lg p-8 flex flex-col items-center text-center transition-colors ${
+              !selectedCompany
+                ? 'border-outline-variant/40 opacity-50 cursor-not-allowed'
+                : isDragging
+                ? 'border-primary bg-primary-fixed/30 cursor-pointer'
+                : 'border-outline-variant hover:bg-primary-fixed/20 cursor-pointer group'
+            }`}
+            onDragOver={e => { e.preventDefault(); if (selectedCompany) setIsDragging(true); }}
             onDragLeave={() => setIsDragging(false)}
             onDrop={e => {
               e.preventDefault();
               setIsDragging(false);
+              if (!selectedCompany) { setError('יש לבחור חברת ביטוח לפני העלאת קובץ'); return; }
               const files = Array.from(e.dataTransfer.files);
               if (files.length > 0) handleMultipleFiles(files);
             }}
-            onClick={() => !uploading && fileRef.current?.click()}
+            onClick={() => {
+              if (!selectedCompany) { setError('יש לבחור חברת ביטוח לפני העלאת קובץ'); return; }
+              if (!uploading) fileRef.current?.click();
+            }}
           >
             {uploading ? (
               <><div className="w-10 h-10 rounded-full border-4 border-primary/20 border-t-primary animate-spin mb-3" /><p className="font-bold text-primary">מעבד קבצים...</p></>
+            ) : !selectedCompany ? (
+              <>
+                <div className="w-14 h-14 bg-surface-container rounded-full flex items-center justify-center text-on-surface-variant mb-3">
+                  <Icon name="cloud_upload" size="lg" />
+                </div>
+                <p className="font-bold text-on-surface-variant mb-1">בחר חברת ביטוח קודם</p>
+              </>
             ) : (
               <>
                 <div className="w-14 h-14 bg-primary-fixed rounded-full flex items-center justify-center text-primary mb-3 group-hover:scale-110 transition-transform">
@@ -1285,6 +1297,32 @@ function UploadModal({ open, mode, onComplete, onClose }: {
           )}
         </div>
       </div>
+    </div>
+  );
+}
+
+function CrossSellHint({ navigate, clientCount }: { navigate: NavigateFunction; clientCount: number }) {
+  return (
+    <div className="flex items-center justify-between gap-4 p-4 bg-emerald-50 border border-emerald-200 rounded-xl">
+      <div className="flex items-center gap-3">
+        <div className="w-9 h-9 rounded-lg bg-emerald-100 border border-emerald-200 flex items-center justify-center flex-shrink-0">
+          <Icon name="auto_awesome" className="text-emerald-600" size="sm" />
+        </div>
+        <div>
+          <p className="font-bold text-emerald-800 text-sm">פוטנציאל מכירה</p>
+          <p className="text-xs text-emerald-700/70">
+            {clientCount} לקוחות בתיק — גלה הזדמנויות cross-sell ולקוחות רדומים
+          </p>
+        </div>
+      </div>
+      <button
+        onClick={() => navigate('/potential')}
+        className="flex-shrink-0 flex items-center gap-1.5 px-3 py-1.5 bg-emerald-600 text-white rounded-lg text-xs font-bold hover:bg-emerald-700 transition-colors"
+        aria-label="עבור לדף פוטנציאל מכירה"
+      >
+        <Icon name="arrow_back" size="sm" />
+        גלה הזדמנויות
+      </button>
     </div>
   );
 }

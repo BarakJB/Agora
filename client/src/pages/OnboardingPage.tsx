@@ -3,6 +3,7 @@ import { useNavigate } from 'react-router-dom';
 import Icon from '../components/ui/Icon';
 import { useAuthStore } from '../store/authStore';
 import { useDataStore, type UploadRow } from '../store/dataStore';
+import CompanyLogo from '../components/common/CompanyLogo';
 
 /* ───────── Constants ───────── */
 
@@ -16,14 +17,8 @@ const STEPS = [
 
 const INSURANCE_COMPANIES = [
   { id: 'harel', name: 'הראל', initials: 'הר' },
-  { id: 'migdal', name: 'מגדל', initials: 'מג' },
   { id: 'phoenix', name: 'הפניקס', initials: 'הפ' },
-  { id: 'clal', name: 'כלל', initials: 'כל' },
   { id: 'menora', name: 'מנורה מבטחים', initials: 'מנ' },
-  { id: 'hachshara', name: 'הכשרה', initials: 'הכ' },
-  { id: 'altshuler', name: 'אלטשולר שחם', initials: 'אש' },
-  { id: 'meitav', name: 'מיטב דש', initials: 'מד' },
-  { id: 'psagot', name: 'פסגות', initials: 'פס' },
   { id: 'analyst', name: 'אנליסט', initials: 'אנ' },
 ] as const;
 
@@ -184,6 +179,7 @@ export default function OnboardingPage() {
     try {
       const formData = new FormData();
       formData.append('file', file);
+      formData.append('insuranceCompany', companyId);
 
       const token = localStorage.getItem('agora-token');
       const response = await fetch('/api/v1/uploads/parse', {
@@ -619,12 +615,8 @@ function StepCompanies({ selectedCompanies, onToggle, onToggleAll, onNext, onBac
                   <Icon name="check_circle" size="sm" className="text-secondary" filled />
                 </div>
               )}
-              <div
-                className={`w-10 h-10 mx-auto rounded-full flex items-center justify-center text-sm font-bold mb-2 ${
-                  isSelected ? 'bg-primary text-on-primary' : 'bg-surface-container-high text-on-surface-variant'
-                }`}
-              >
-                {company.initials}
+              <div className="mx-auto mb-2">
+                <CompanyLogo company={company.id} size="md" />
               </div>
               <span className="text-sm font-bold block">{company.name}</span>
             </button>
