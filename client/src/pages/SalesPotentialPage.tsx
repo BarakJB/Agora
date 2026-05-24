@@ -9,6 +9,8 @@ import { salesApi } from '../services/api';
 import * as api from '../services/api';
 import { formatMonth } from '../utils/dateFormat';
 import type { SalesPotentialData } from '../types/potential';
+import PortfolioFilterToggle, { PortfolioFilterBanner } from '../components/common/PortfolioFilterToggle';
+import { usePortfolioFilterStore } from '../store/portfolioFilterStore';
 
 interface SectionProps {
   icon: string;
@@ -56,6 +58,7 @@ function PotentialSection({
 }
 
 export default function SalesPotentialPage() {
+  const portfolioFilter = usePortfolioFilterStore((s) => s.portfolioFilter);
   const [data, setData] = useState<SalesPotentialData | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -66,7 +69,7 @@ export default function SalesPotentialPage() {
     setError(null);
 
     salesApi
-      .getSalesPotential()
+      .getSalesPotential(portfolioFilter)
       .then((res) => {
         if (!cancelled && res.data) setData(res.data);
       })
@@ -88,7 +91,7 @@ export default function SalesPotentialPage() {
     return () => { cancelled = true; };
   }
 
-  useEffect(load, []);
+  useEffect(load, [portfolioFilter]);
 
   if (loading) {
     return (
@@ -146,15 +149,19 @@ export default function SalesPotentialPage() {
           </p>
         </div>
 
-        {totalOpportunities > 0 && (
-          <div className="flex items-center gap-2 px-4 py-2 bg-emerald-50 border border-emerald-200 rounded-xl">
-            <Icon name="lightbulb" className="text-emerald-600" size="sm" />
-            <span className="text-sm font-bold text-emerald-700">
-              {totalOpportunities} הזדמנויות זוהו
-            </span>
-          </div>
-        )}
+        <div className="flex flex-wrap items-center gap-3">
+          <PortfolioFilterToggle />
+          {totalOpportunities > 0 && (
+            <div className="flex items-center gap-2 px-4 py-2 bg-emerald-50 border border-emerald-200 rounded-xl">
+              <Icon name="lightbulb" className="text-emerald-600" size="sm" />
+              <span className="text-sm font-bold text-emerald-700">
+                {totalOpportunities} הזדמנויות זוהו
+              </span>
+            </div>
+          )}
+        </div>
       </section>
+      <PortfolioFilterBanner filter={portfolioFilter} />
 
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
         <MetricCard

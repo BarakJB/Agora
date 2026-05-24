@@ -8,6 +8,8 @@ import { detectAnomalies } from '../utils/anomalies';
 import type { Anomaly } from '../utils/anomalies';
 import { formatMonth, fmt } from '../utils/dateFormat';
 import { mapToCommissionRow } from '../utils/commissionMapper';
+import PortfolioFilterToggle, { PortfolioFilterBanner } from '../components/common/PortfolioFilterToggle';
+import { usePortfolioFilterStore } from '../store/portfolioFilterStore';
 
 const TYPE_LABELS: Record<Anomaly['type'], string> = {
   total_drop: 'ירידה כללית',
@@ -29,6 +31,7 @@ const SEVERITY_LABELS: Record<Anomaly['severity'], string> = {
 
 export default function AnomaliesPage() {
   const navigate = useNavigate();
+  const portfolioFilter = usePortfolioFilterStore((s) => s.portfolioFilter);
 
   const [commissions, setCommissions] = useState<CommissionRow[]>([]);
   const [loading, setLoading] = useState(true);
@@ -48,7 +51,7 @@ export default function AnomaliesPage() {
       setLoading(true);
       setError(null);
       try {
-        const res = await api.getSalesTransactions();
+        const res = await api.getSalesTransactions(undefined, portfolioFilter);
         if (!cancelled) {
           setCommissions((res.data || []).map(mapToCommissionRow));
         }
@@ -62,7 +65,7 @@ export default function AnomaliesPage() {
     }
     load();
     return () => { cancelled = true; };
-  }, [refreshKey]);
+  }, [refreshKey, portfolioFilter]);
 
   const availableMonths = useMemo(() => {
     const months = new Set<string>();
@@ -119,14 +122,18 @@ export default function AnomaliesPage() {
           </h2>
           <p className="text-on-surface-variant">זיהוי אוטומטי של שינויים חריגים בעמלות</p>
         </div>
-        <button
-          onClick={() => navigate('/dashboard')}
-          className="self-start flex items-center gap-2 text-sm font-semibold text-primary hover:underline"
-        >
-          <Icon name="arrow_forward" size="sm" />
-          חזור לדשבורד
-        </button>
+        <div className="flex flex-wrap items-center gap-3 self-start">
+          <PortfolioFilterToggle />
+          <button
+            onClick={() => navigate('/dashboard')}
+            className="flex items-center gap-2 text-sm font-semibold text-primary hover:underline"
+          >
+            <Icon name="arrow_forward" size="sm" />
+            חזור לדשבורד
+          </button>
+        </div>
       </section>
+      <PortfolioFilterBanner filter={portfolioFilter} />
 
       {allAnomalies.length > 0 && (
         <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">

@@ -1,9 +1,17 @@
 import { Router } from 'express';
 import { v4 as uuid } from 'uuid';
 import { validate } from '../middleware/validate.js';
-import { registerBodySchema, loginBodySchema, type RegisterBody, type LoginBody } from '../validators/auth.schemas.js';
+import {
+  registerBodySchema, loginBodySchema, forgotPasswordSchema, resetPasswordSchema,
+  type RegisterBody, type LoginBody, type ForgotPasswordBody, type ResetPasswordBody,
+} from '../validators/auth.schemas.js';
 import { findAgentDuplicate, findAgentByEmail, createAgentWithPassword } from '../repositories/mysql.repository.js';
 import { hashPassword, verifyPassword, signToken } from '../services/auth.service.js';
+import { createOTP, findValidOTPByEmail, markUsed } from '../repositories/passwordReset.repository.js';
+import { getEmailSender } from '../services/email.service.js';
+import { createRateLimit } from '../middleware/rateLimit.middleware.js';
+import pool from '../config/database.js';
+import type { ResultSetHeader } from 'mysql2';
 
 export const authRouter = Router();
 
@@ -121,6 +129,69 @@ authRouter.post(
         error: null,
         meta: null,
       });
+    } catch (err) {
+      next(err);
+    }
+  },
+);
+
+const forgotPasswordRateLimit = createRateLimit({
+  keyFromReq: (req) => `forgot-password:${req.ip ?? 'unknown'}`,
+  max: 3,
+  windowMs: 60 * 60 * 1000,
+  message: 'חרגת ממגבלת הבקשות לאיפוס סיסמה. אנא המתן שעה.',
+});
+
+const resetPasswordRateLimit = createRateLimit({
+  keyFromReq: (req) => `reset-password:${(req.body as { email?: string }).email ?? req.ip ?? 'unknown'}`,
+  max: 5,
+  windowMs: 60 * 60 * 1000,
+  message: 'חרגת ממגבלת ניסיונות אימות. אנא המתן שעה.',
+});
+
+authRouter.post(
+  '/forgot-password',
+  forgotPasswordRateLimit,
+  validate({ body: forgotPasswordSchema }),
+  async (req, res, next) => {
+    try {
+      const { email } = req.body as ForgotPasswordBody;
+      const agent = await findAgentByEmail(email);
+
+      if (agent) {
+        const { otp } = await createOTP(agent.id);
+        await getEmailSender().sendOTP(email, otp);
+      }
+
+      res.json({ data: { sent: true }, error: null, meta: null });
+    } catch (err) {
+      next(err);
+    }
+  },
+);
+
+authRouter.post(
+  '/reset-password',
+  resetPasswordRateLimit,
+  validate({ body: resetPasswordSchema }),
+  async (req, res, next) => {
+    try {
+      const { email, otp, newPassword } = req.body as ResetPasswordBody;
+
+      const record = await findValidOTPByEmail(email, otp);
+      if (!record) {
+        res.status(400).json({ data: null, error: 'הקוד אינו תקין או שפג תוקפו', meta: null });
+        return;
+      }
+
+      const passwordHash = await hashPassword(newPassword);
+      await pool.execute<ResultSetHeader>(
+        'UPDATE agents SET password_hash = ?, updated_at = NOW() WHERE id = ?',
+        [passwordHash, record.agentId],
+      );
+      await markUsed(record.id);
+
+      res.json({ data: { success: true }, error: null, meta: null });
     } catch (err) {
       next(err);
     }

@@ -12,6 +12,8 @@ import { mapToCommissionRow } from '../utils/commissionMapper';
 import { evaluateConcentrationTop5, evaluateAtRiskCount } from '../utils/profitThresholds';
 import ContractCoverageCard from '../components/portfolio/ContractCoverageCard';
 import type { ContractCoverageSummary } from '../types/contract-coverage';
+import PortfolioFilterToggle, { PortfolioFilterBanner } from '../components/common/PortfolioFilterToggle';
+import { usePortfolioFilterStore } from '../store/portfolioFilterStore';
 
 type SortKey = 'total' | 'monthlyAvg' | 'trend';
 type SortDir = 'asc' | 'desc';
@@ -19,6 +21,8 @@ type SortDir = 'asc' | 'desc';
 const TREND_ORDER = { up: 1, stable: 0, down: -1 };
 
 export default function PortfolioPage() {
+  const portfolioFilter = usePortfolioFilterStore((s) => s.portfolioFilter);
+
   const [data, setData] = useState<api.PortfolioAnalysis | null>(null);
   const [commissions, setCommissions] = useState<CommissionRow[]>([]);
   const [loading, setLoading] = useState(true);
@@ -35,9 +39,9 @@ export default function PortfolioPage() {
       setError(null);
       try {
         const [portfolioRes, salesRes, coverageRes] = await Promise.all([
-          api.getPortfolioAnalysis(),
-          api.getSalesTransactions(),
-          getContractCoverageSummary(),
+          api.getPortfolioAnalysis(portfolioFilter),
+          api.getSalesTransactions(undefined, portfolioFilter),
+          getContractCoverageSummary(undefined, portfolioFilter),
         ]);
         if (!cancelled) {
           if (portfolioRes.data) setData(portfolioRes.data);
@@ -54,7 +58,7 @@ export default function PortfolioPage() {
     }
     load();
     return () => { cancelled = true; };
-  }, []);
+  }, [portfolioFilter]);
 
   const sortedClients = useMemo(() => {
     if (!data) return [];
@@ -135,14 +139,18 @@ export default function PortfolioPage() {
   return (
     <div className="space-y-8 pb-12">
       {/* Page header */}
-      <div>
-        <h1 className="text-2xl font-bold font-headline text-on-surface">
-          ניתוח תיק לקוחות
-        </h1>
-        <p className="text-sm text-on-surface-variant mt-1">
-          סקירה מקיפה של תיק הלקוחות שלך
-        </p>
+      <div className="flex flex-col sm:flex-row sm:items-start sm:justify-between gap-3">
+        <div>
+          <h1 className="text-2xl font-bold font-headline text-on-surface">
+            ניתוח תיק לקוחות
+          </h1>
+          <p className="text-sm text-on-surface-variant mt-1">
+            סקירה מקיפה של תיק הלקוחות שלך
+          </p>
+        </div>
+        <PortfolioFilterToggle />
       </div>
+      <PortfolioFilterBanner filter={portfolioFilter} />
 
       {/* ─── Contract coverage widget ─── */}
       {coverageSummary && (

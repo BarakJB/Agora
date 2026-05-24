@@ -1,4 +1,7 @@
 "use strict";
+var __importDefault = (this && this.__importDefault) || function (mod) {
+    return (mod && mod.__esModule) ? mod : { "default": mod };
+};
 Object.defineProperty(exports, "__esModule", { value: true });
 exports.authRouter = void 0;
 const express_1 = require("express");
@@ -7,6 +10,10 @@ const validate_js_1 = require("../middleware/validate.js");
 const auth_schemas_js_1 = require("../validators/auth.schemas.js");
 const mysql_repository_js_1 = require("../repositories/mysql.repository.js");
 const auth_service_js_1 = require("../services/auth.service.js");
+const passwordReset_repository_js_1 = require("../repositories/passwordReset.repository.js");
+const email_service_js_1 = require("../services/email.service.js");
+const rateLimit_middleware_js_1 = require("../middleware/rateLimit.middleware.js");
+const database_js_1 = __importDefault(require("../config/database.js"));
 exports.authRouter = (0, express_1.Router)();
 exports.authRouter.post('/register', (0, validate_js_1.validate)({ body: auth_schemas_js_1.registerBodySchema }), async (req, res, next) => {
     try {
@@ -100,6 +107,49 @@ exports.authRouter.post('/login', (0, validate_js_1.validate)({ body: auth_schem
             error: null,
             meta: null,
         });
+    }
+    catch (err) {
+        next(err);
+    }
+});
+const forgotPasswordRateLimit = (0, rateLimit_middleware_js_1.createRateLimit)({
+    keyFromReq: (req) => `forgot-password:${req.ip ?? 'unknown'}`,
+    max: 3,
+    windowMs: 60 * 60 * 1000,
+    message: 'חרגת ממגבלת הבקשות לאיפוס סיסמה. אנא המתן שעה.',
+});
+const resetPasswordRateLimit = (0, rateLimit_middleware_js_1.createRateLimit)({
+    keyFromReq: (req) => `reset-password:${req.body.email ?? req.ip ?? 'unknown'}`,
+    max: 5,
+    windowMs: 60 * 60 * 1000,
+    message: 'חרגת ממגבלת ניסיונות אימות. אנא המתן שעה.',
+});
+exports.authRouter.post('/forgot-password', forgotPasswordRateLimit, (0, validate_js_1.validate)({ body: auth_schemas_js_1.forgotPasswordSchema }), async (req, res, next) => {
+    try {
+        const { email } = req.body;
+        const agent = await (0, mysql_repository_js_1.findAgentByEmail)(email);
+        if (agent) {
+            const { otp } = await (0, passwordReset_repository_js_1.createOTP)(agent.id);
+            await (0, email_service_js_1.getEmailSender)().sendOTP(email, otp);
+        }
+        res.json({ data: { sent: true }, error: null, meta: null });
+    }
+    catch (err) {
+        next(err);
+    }
+});
+exports.authRouter.post('/reset-password', resetPasswordRateLimit, (0, validate_js_1.validate)({ body: auth_schemas_js_1.resetPasswordSchema }), async (req, res, next) => {
+    try {
+        const { email, otp, newPassword } = req.body;
+        const record = await (0, passwordReset_repository_js_1.findValidOTPByEmail)(email, otp);
+        if (!record) {
+            res.status(400).json({ data: null, error: 'הקוד אינו תקין או שפג תוקפו', meta: null });
+            return;
+        }
+        const passwordHash = await (0, auth_service_js_1.hashPassword)(newPassword);
+        await database_js_1.default.execute('UPDATE agents SET password_hash = ?, updated_at = NOW() WHERE id = ?', [passwordHash, record.agentId]);
+        await (0, passwordReset_repository_js_1.markUsed)(record.id);
+        res.json({ data: { success: true }, error: null, meta: null });
     }
     catch (err) {
         next(err);

@@ -10,9 +10,12 @@ import Icon from '../components/ui/Icon';
 import { detectAnomalies } from '../utils/anomalies';
 import type { CommissionRow } from '../store/dataStore';
 import { mapToCommissionRow } from '../utils/commissionMapper';
+import PortfolioFilterToggle, { PortfolioFilterBanner } from '../components/common/PortfolioFilterToggle';
+import { usePortfolioFilterStore } from '../store/portfolioFilterStore';
 
 export default function ClientRankingPage() {
   const navigate = useNavigate();
+  const portfolioFilter = usePortfolioFilterStore((s) => s.portfolioFilter);
 
   const [clients, setClients] = useState<ClientSummary[]>([]);
   const [commissions, setCommissions] = useState<CommissionRow[]>([]);
@@ -29,8 +32,8 @@ export default function ClientRankingPage() {
       setError(null);
       try {
         const [clientsRes, salesRes] = await Promise.all([
-          api.searchClients(),
-          api.getSalesTransactions(),
+          api.searchClients(undefined, portfolioFilter),
+          api.getSalesTransactions(undefined, portfolioFilter),
         ]);
         if (!cancelled) {
           setClients(clientsRes.data ?? []);
@@ -53,7 +56,7 @@ export default function ClientRankingPage() {
 
     load();
     return () => { cancelled = true; };
-  }, []);
+  }, [portfolioFilter]);
 
   const anomalyClientKeys = useMemo(() => {
     const months = new Set<string>();
@@ -156,7 +159,9 @@ export default function ClientRankingPage() {
           </h2>
           <p className="text-on-surface-variant">מהפחות רווחי לרווחי ביותר</p>
         </div>
+        <PortfolioFilterToggle />
       </section>
+      <PortfolioFilterBanner filter={portfolioFilter} />
 
       {/* Summary cards */}
       {clients.length > 0 && (

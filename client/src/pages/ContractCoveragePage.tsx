@@ -7,6 +7,8 @@ import { getContractCoverageDetailed } from '../services/api';
 import { formatMonth, fmt } from '../utils/dateFormat';
 import type { SalesTransactionWithContract, ContractCoverageSummary } from '../types/contract-coverage';
 import CompanyLogo from '../components/common/CompanyLogo';
+import PortfolioFilterToggle, { PortfolioFilterBanner } from '../components/common/PortfolioFilterToggle';
+import { usePortfolioFilterStore } from '../store/portfolioFilterStore';
 
 type ActiveTab = 'covered' | 'uncovered';
 
@@ -19,6 +21,7 @@ const EMPTY_SUMMARY: ContractCoverageSummary = {
 
 export default function ContractCoveragePage() {
   const navigate = useNavigate();
+  const portfolioFilter = usePortfolioFilterStore((s) => s.portfolioFilter);
 
   const [summary, setSummary] = useState<ContractCoverageSummary>(EMPTY_SUMMARY);
   const [transactions, setTransactions] = useState<SalesTransactionWithContract[]>([]);
@@ -33,7 +36,7 @@ export default function ContractCoveragePage() {
     let cancelled = false;
     async function loadMonths() {
       try {
-        const res = await api.getSalesSummary();
+        const res = await api.getSalesSummary(portfolioFilter);
         if (!cancelled && res.data) {
           const months = res.data.map((s) => s.month).sort();
           setAvailableMonths(months);
@@ -47,7 +50,7 @@ export default function ContractCoveragePage() {
     }
     loadMonths();
     return () => { cancelled = true; };
-  }, []);
+  }, [portfolioFilter]);
 
   useEffect(() => {
     if (availableMonths.length > 0 && !selectedMonth) return;
@@ -56,7 +59,7 @@ export default function ContractCoveragePage() {
       setLoading(true);
       setError(null);
       try {
-        const res = await getContractCoverageDetailed(selectedMonth || undefined);
+        const res = await getContractCoverageDetailed(selectedMonth || undefined, portfolioFilter);
         if (!cancelled && res.data) {
           setSummary(res.data.summary ?? EMPTY_SUMMARY);
           setTransactions((res.data.transactions ?? []) as SalesTransactionWithContract[]);
@@ -71,7 +74,7 @@ export default function ContractCoveragePage() {
     }
     load();
     return () => { cancelled = true; };
-  }, [selectedMonth, availableMonths.length]);
+  }, [selectedMonth, availableMonths.length, portfolioFilter]);
 
   const coveredRows = useMemo(
     () => transactions.filter((t) => t.contractStatus === 'covered'),
@@ -126,30 +129,32 @@ export default function ContractCoveragePage() {
   return (
     <div className="space-y-8 pb-12" dir="rtl">
       {/* Page header */}
-      <div className="flex items-start justify-between">
+      <div className="flex flex-col sm:flex-row sm:items-start sm:justify-between gap-3">
         <div>
           <h1 className="text-2xl font-bold font-headline text-on-surface">כיסוי חוזי</h1>
           <p className="text-sm text-on-surface-variant mt-1">
             פוליסות ועמלות תחת הסכם מול עמלות שאינן מכוסות בהסכם
           </p>
         </div>
-
-        {availableMonths.length > 0 && (
-          <div className="flex items-center gap-2">
-            <Icon name="calendar_month" className="text-on-surface-variant" size="sm" />
-            <select
-              value={selectedMonth}
-              onChange={(e) => setSelectedMonth(e.target.value)}
-              className="text-sm bg-surface-container border border-outline-variant/40 rounded-lg px-3 py-1.5 text-on-surface focus:outline-none focus:ring-2 focus:ring-primary/30"
-              aria-label="בחר חודש"
-            >
-              {availableMonths.map((m) => (
-                <option key={m} value={m}>{formatMonth(m)}</option>
-              ))}
-            </select>
-          </div>
-        )}
+        <PortfolioFilterToggle />
       </div>
+      <PortfolioFilterBanner filter={portfolioFilter} />
+
+      {availableMonths.length > 0 && (
+        <div className="flex items-center gap-2">
+          <Icon name="calendar_month" className="text-on-surface-variant" size="sm" />
+          <select
+            value={selectedMonth}
+            onChange={(e) => setSelectedMonth(e.target.value)}
+            className="text-sm bg-surface-container border border-outline-variant/40 rounded-lg px-3 py-1.5 text-on-surface focus:outline-none focus:ring-2 focus:ring-primary/30"
+            aria-label="בחר חודש"
+          >
+            {availableMonths.map((m) => (
+              <option key={m} value={m}>{formatMonth(m)}</option>
+            ))}
+          </select>
+        </div>
+      )}
 
       {/* Summary card */}
       <ContractCoverageCard summary={summary} totalAmount={totalAmount} />

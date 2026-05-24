@@ -5,6 +5,8 @@ import { useAuthStore } from './store/authStore';
 import { useDataStore } from './store/dataStore';
 
 const LoginPage = lazy(() => import('./pages/LoginPage'));
+const ForgotPasswordPage = lazy(() => import('./pages/ForgotPasswordPage'));
+const ResetPasswordPage = lazy(() => import('./pages/ResetPasswordPage'));
 const OnboardingPage = lazy(() => import('./pages/OnboardingPage'));
 const DashboardPage = lazy(() => import('./pages/DashboardPage'));
 const PolicyTrackerPage = lazy(() => import('./pages/PolicyTrackerPage'));
@@ -101,6 +103,8 @@ export default function App() {
       <Suspense fallback={<LoadingSpinner />}>
         <Routes>
           <Route path="/login" element={<LoginPage />} />
+          <Route path="/forgot-password" element={<ForgotPasswordPage />} />
+          <Route path="/reset-password" element={<ResetPasswordPage />} />
           <Route
             path="/onboarding"
             element={

@@ -1,6 +1,6 @@
 "use strict";
 Object.defineProperty(exports, "__esModule", { value: true });
-exports.loginBodySchema = exports.registerBodySchema = void 0;
+exports.resetPasswordSchema = exports.forgotPasswordSchema = exports.loginBodySchema = exports.registerBodySchema = void 0;
 const zod_1 = require("zod");
 exports.registerBodySchema = zod_1.z.object({
     name: zod_1.z.string().min(1, 'שם הוא שדה חובה').max(100),
@@ -17,5 +17,13 @@ exports.registerBodySchema = zod_1.z.object({
 exports.loginBodySchema = zod_1.z.object({
     email: zod_1.z.string().email('כתובת אימייל לא תקינה'),
     password: zod_1.z.string().min(1, 'סיסמה היא שדה חובה'),
+});
+exports.forgotPasswordSchema = zod_1.z.object({
+    email: zod_1.z.string().email('כתובת אימייל לא תקינה'),
+});
+exports.resetPasswordSchema = zod_1.z.object({
+    email: zod_1.z.string().email('כתובת אימייל לא תקינה'),
+    otp: zod_1.z.string().length(6).regex(/^\d{6}$/, 'קוד OTP חייב להיות 6 ספרות'),
+    newPassword: zod_1.z.string().min(8, 'סיסמה חייבת להכיל לפחות 8 תווים').max(128),
 });
 //# sourceMappingURL=auth.schemas.js.map

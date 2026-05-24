@@ -83,6 +83,22 @@ export function register(payload: {
   });
 }
 
+export const authApi = {
+  forgotPassword(email: string) {
+    return request<{ sent: boolean }>('/auth/forgot-password', {
+      method: 'POST',
+      body: JSON.stringify({ email }),
+    });
+  },
+
+  resetPassword(payload: { email: string; otp: string; newPassword: string }) {
+    return request<{ success: boolean }>('/auth/reset-password', {
+      method: 'POST',
+      body: JSON.stringify(payload),
+    });
+  },
+};
+
 // ─── Agents ──────────────────────────────────────────────────
 export interface Agent {
   id: string;

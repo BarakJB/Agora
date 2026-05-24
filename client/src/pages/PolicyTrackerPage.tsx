@@ -7,8 +7,12 @@ import {
   type ClientSummary,
   type ClientTransaction,
 } from '../services/api';
+import PortfolioFilterToggle, { PortfolioFilterBanner } from '../components/common/PortfolioFilterToggle';
+import { usePortfolioFilterStore } from '../store/portfolioFilterStore';
 
 export default function PolicyTrackerPage() {
+  const portfolioFilter = usePortfolioFilterStore((s) => s.portfolioFilter);
+
   const [search, setSearch] = useState('');
   const [clients, setClients] = useState<ClientSummary[]>([]);
   const [loading, setLoading] = useState(false);
@@ -24,7 +28,7 @@ export default function PolicyTrackerPage() {
     setLoading(true);
     setError(null);
     try {
-      const res = await searchClients(term || undefined);
+      const res = await searchClients(term || undefined, portfolioFilter);
       setClients(res.data ?? []);
     } catch {
       setError('שגיאה בטעינת לקוחות');
@@ -32,9 +36,9 @@ export default function PolicyTrackerPage() {
     } finally {
       setLoading(false);
     }
-  }, []);
+  }, [portfolioFilter]);
 
-  // Load all clients on mount
+  // Load all clients on mount and on filter change
   useEffect(() => {
     fetchClients('');
   }, [fetchClients]);
@@ -72,10 +76,14 @@ export default function PolicyTrackerPage() {
     <div className="p-8 max-w-7xl mx-auto space-y-8" dir="rtl">
       {/* Header */}
       <section>
-        <h1 className="font-headline text-3xl md:text-4xl font-black tracking-tight mb-2">
-          מעקב לקוחות ופוליסות
-        </h1>
-        <p className="text-on-surface-variant text-sm mb-6">
+        <div className="flex flex-col sm:flex-row sm:items-start sm:justify-between gap-3 mb-2">
+          <h1 className="font-headline text-3xl md:text-4xl font-black tracking-tight">
+            מעקב לקוחות ופוליסות
+          </h1>
+          <PortfolioFilterToggle />
+        </div>
+        <PortfolioFilterBanner filter={portfolioFilter} />
+        <p className="text-on-surface-variant text-sm mt-2 mb-6">
           חיפוש לקוחות לפי שם או תעודת זהות
         </p>
 

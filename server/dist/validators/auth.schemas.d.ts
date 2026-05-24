@@ -45,4 +45,26 @@ export declare const loginBodySchema: z.ZodObject<{
     password: string;
 }>;
 export type LoginBody = z.infer<typeof loginBodySchema>;
+export declare const forgotPasswordSchema: z.ZodObject<{
+    email: z.ZodString;
+}, "strip", z.ZodTypeAny, {
+    email: string;
+}, {
+    email: string;
+}>;
+export type ForgotPasswordBody = z.infer<typeof forgotPasswordSchema>;
+export declare const resetPasswordSchema: z.ZodObject<{
+    email: z.ZodString;
+    otp: z.ZodString;
+    newPassword: z.ZodString;
+}, "strip", z.ZodTypeAny, {
+    email: string;
+    otp: string;
+    newPassword: string;
+}, {
+    email: string;
+    otp: string;
+    newPassword: string;
+}>;
+export type ResetPasswordBody = z.infer<typeof resetPasswordSchema>;
 //# sourceMappingURL=auth.schemas.d.ts.map

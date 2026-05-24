@@ -21,3 +21,17 @@ export const loginBodySchema = z.object({
 });
 
 export type LoginBody = z.infer<typeof loginBodySchema>;
+
+export const forgotPasswordSchema = z.object({
+  email: z.string().email('כתובת אימייל לא תקינה'),
+});
+
+export type ForgotPasswordBody = z.infer<typeof forgotPasswordSchema>;
+
+export const resetPasswordSchema = z.object({
+  email: z.string().email('כתובת אימייל לא תקינה'),
+  otp: z.string().length(6).regex(/^\d{6}$/, 'קוד OTP חייב להיות 6 ספרות'),
+  newPassword: z.string().min(8, 'סיסמה חייבת להכיל לפחות 8 תווים').max(128),
+});
+
+export type ResetPasswordBody = z.infer<typeof resetPasswordSchema>;

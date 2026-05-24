@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, Link } from 'react-router-dom';
 import Icon from '../components/ui/Icon';
 import { useAuthStore } from '../store/authStore';
 import { useDataStore } from '../store/dataStore';
@@ -220,6 +220,14 @@ export default function LoginPage() {
                     </>
                   )}
                 </button>
+                <div className="text-center">
+                  <Link
+                    to="/forgot-password"
+                    className="text-sm text-on-surface-variant hover:text-primary font-label transition-colors"
+                  >
+                    שכחתי סיסמה
+                  </Link>
+                </div>
               </form>
             </div>
           )}

@@ -21,6 +21,8 @@ import type { TrendValue } from '../utils/profitThresholds';
 import type { NavigateFunction } from 'react-router-dom';
 import AssignCompanyModal from '../components/anomalies/AssignCompanyModal';
 import { getCompanyDisplay, normalizeCompanyName } from '../utils/insuranceCompanies';
+import PortfolioFilterToggle, { PortfolioFilterBanner } from '../components/common/PortfolioFilterToggle';
+import { usePortfolioFilterStore } from '../store/portfolioFilterStore';
 
 /* Commission type breakdown config */
 interface BreakdownType {
@@ -99,6 +101,7 @@ export default function DashboardPage() {
   const userMode = useAuthStore((s) => s.userMode);
   const setAgreementUploaded = useAuthStore((s) => s.setAgreementUploaded);
   const agreementUploaded = profile?.agreementUploaded ?? false;
+  const portfolioFilter = usePortfolioFilterStore((s) => s.portfolioFilter);
 
   // Direct state — loaded fresh from DB on every mount. No localStorage dependency.
   const [commissions, setCommissions] = useState<CommissionRow[]>([]);
@@ -113,15 +116,15 @@ export default function DashboardPage() {
   const [assignTarget, setAssignTarget] = useState<{ name: string; id: string; policyNumber?: string } | null>(null);
   const [assignedCompanies, setAssignedCompanies] = useState<Record<string, string>>({});
 
-  // Load from DB — called on every mount and after upload
+  // Load from DB — called on every mount, after upload, and on filter change
   const loadFromDb = useCallback(async () => {
     if (userMode === 'demo') return;
     setLoading(true);
     setError(null);
     try {
       const [salesRes, portfolioRes] = await Promise.all([
-        api.getSalesTransactions(),
-        api.getPortfolioAnalysis(),
+        api.getSalesTransactions(undefined, portfolioFilter),
+        api.getPortfolioAnalysis(portfolioFilter),
       ]);
       const records = (salesRes.data || []).map(mapToCommissionRow);
       setCommissions(records);
@@ -134,9 +137,9 @@ export default function DashboardPage() {
     } finally {
       setLoading(false);
     }
-  }, [userMode]);
+  }, [userMode, portfolioFilter]);
 
-  // Always load on mount for authenticated users
+  // Always load on mount for authenticated users and on filter change
   useEffect(() => {
     if (userMode === 'new') {
       loadFromDb();
@@ -332,6 +335,7 @@ export default function DashboardPage() {
 
   // ─── State 2: No sales data ───
   if (commissions.length === 0 && !loading) {
+    const filterLabel = portfolioFilter === 'personal' ? 'תיק אישי' : portfolioFilter === 'partners' ? 'תיק שותפים' : null;
     return (
       <>
         <div className="p-4 md:p-8 min-h-[80vh] flex items-center justify-center">
@@ -339,8 +343,18 @@ export default function DashboardPage() {
             <div className="w-20 h-20 mx-auto bg-primary-fixed rounded-full flex items-center justify-center">
               <Icon name="upload_file" size="lg" className="text-primary" />
             </div>
-            <h1 className="text-3xl font-black font-headline text-on-surface">העלאת קבצי מכירות</h1>
-            <p className="text-on-surface-variant">העלה את דוחות העמלות שקיבלת מחברות הביטוח כדי לחשב את השכר שלך</p>
+            {filterLabel ? (
+              <>
+                <h1 className="text-3xl font-black font-headline text-on-surface">אין נתונים ב{filterLabel}</h1>
+                <p className="text-on-surface-variant">נסה לבחור תיק אחר, או העלה קבצי מכירות לתיק זה</p>
+                <PortfolioFilterToggle />
+              </>
+            ) : (
+              <>
+                <h1 className="text-3xl font-black font-headline text-on-surface">העלאת קבצי מכירות</h1>
+                <p className="text-on-surface-variant">העלה את דוחות העמלות שקיבלת מחברות הביטוח כדי לחשב את השכר שלך</p>
+              </>
+            )}
             <button onClick={() => openUpload('sales')} className="w-full editorial-gradient text-white font-bold py-4 rounded-lg shadow-editorial-btn hover:opacity-95 active:scale-[0.98] transition-all flex justify-center items-center gap-2">
               <Icon name="upload_file" />
               העלאת קבצי מכירות
@@ -382,11 +396,15 @@ export default function DashboardPage() {
             <h2 className="text-3xl lg:text-4xl font-black font-headline text-on-surface tracking-tight mb-1">תחזית שכר חודשית</h2>
             <p className="text-on-surface-variant">סקירה מפורטת של עמלות ומכירות</p>
           </div>
-          <button onClick={() => openUpload('sales')} className="bg-primary-container text-white px-6 py-2.5 rounded-lg font-semibold text-sm shadow-editorial-btn hover:translate-y-[-1px] transition-all flex items-center gap-2 self-start">
-            <Icon name="upload_file" size="sm" />
-            העלאת קבצי מכירות
-          </button>
+          <div className="flex flex-wrap items-center gap-3 self-start">
+            <PortfolioFilterToggle />
+            <button onClick={() => openUpload('sales')} className="bg-primary-container text-white px-6 py-2.5 rounded-lg font-semibold text-sm shadow-editorial-btn hover:translate-y-[-1px] transition-all flex items-center gap-2">
+              <Icon name="upload_file" size="sm" />
+              העלאת קבצי מכירות
+            </button>
+          </div>
         </section>
+        <PortfolioFilterBanner filter={portfolioFilter} />
 
         {/* Month Navigator — right aligned, compact */}
         <div className="flex items-center gap-2 self-end">

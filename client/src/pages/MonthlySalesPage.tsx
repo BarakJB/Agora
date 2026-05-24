@@ -3,6 +3,8 @@ import Icon from '../components/ui/Icon';
 import { useAuthStore } from '../store/authStore';
 import * as api from '../services/api';
 import CompanyLogo from '../components/common/CompanyLogo';
+import PortfolioFilterToggle, { PortfolioFilterBanner } from '../components/common/PortfolioFilterToggle';
+import { usePortfolioFilterStore } from '../store/portfolioFilterStore';
 
 /* ─── Helpers ─── */
 const HEBREW_MONTHS = [
@@ -36,6 +38,7 @@ const COMPANIES = [
 /* ─── Main Component ─── */
 export default function MonthlySalesPage() {
   const userMode = useAuthStore((s) => s.userMode);
+  const portfolioFilter = usePortfolioFilterStore((s) => s.portfolioFilter);
 
   const [transactions, setTransactions] = useState<api.SalesTransaction[]>([]);
   const [summary, setSummary] = useState<api.MonthlySalarySummary[]>([]);
@@ -52,8 +55,8 @@ export default function MonthlySalesPage() {
     setError(null);
     try {
       const [salesRes, summaryRes] = await Promise.all([
-        api.getSalesTransactions(),
-        api.getSalesSummary(),
+        api.getSalesTransactions(undefined, portfolioFilter),
+        api.getSalesSummary(portfolioFilter),
       ]);
       setTransactions(salesRes.data || []);
       setSummary(summaryRes.data || []);
@@ -65,7 +68,7 @@ export default function MonthlySalesPage() {
     } finally {
       setLoading(false);
     }
-  }, [userMode]);
+  }, [userMode, portfolioFilter]);
 
   useEffect(() => {
     loadFromDb();
@@ -237,6 +240,8 @@ export default function MonthlySalesPage() {
           </div>
 
           <div className="flex items-center gap-3 flex-wrap">
+            <PortfolioFilterToggle />
+
             {/* Month selector */}
             <div className="flex items-center gap-2">
               <Icon name="calendar_month" className="text-primary" />
@@ -262,6 +267,7 @@ export default function MonthlySalesPage() {
             </button>
           </div>
         </header>
+        <PortfolioFilterBanner filter={portfolioFilter} />
 
         {/* Summary cards */}
         <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">

@@ -1,7 +1,10 @@
+import { useState, useEffect } from 'react';
 import Icon from '../components/ui/Icon';
+import CompanyLogo from '../components/common/CompanyLogo';
 import { useAuthStore } from '../store/authStore';
 import { useDataStore } from '../store/dataStore';
 import CommissionRatesEditor from '../components/CommissionRatesEditor';
+import * as api from '../services/api';
 
 const links = [
   { icon: 'download', title: 'לוח עמלות סוכנים - הראל ביטוח (PDF)', desc: 'עודכן לאחרונה: 01/01/2026' },
@@ -14,6 +17,36 @@ const links = [
   { icon: 'support_agent', title: 'מחלקת ניהול סוכנים', desc: 'פנייה ישירה למוקד תמיכה טכנית ומקצועית' },
 ];
 
+const COMPANIES: { id: string; name: string }[] = [
+  { id: 'harel', name: 'הראל' },
+  { id: 'phoenix', name: 'הפניקס' },
+  { id: 'menora', name: 'מנורה מבטחים' },
+  { id: 'analyst', name: 'אנליסט' },
+];
+
+type PortfolioType = 'personal' | 'partners';
+
+interface AgentNumberField {
+  value: string;
+  saving: boolean;
+  deleting: boolean;
+  error: string | null;
+}
+
+type AgentNumbersMap = Record<string, Record<PortfolioType, AgentNumberField>>;
+
+function makeEmptyField(): AgentNumberField {
+  return { value: '', saving: false, deleting: false, error: null };
+}
+
+function buildInitialMap(): AgentNumbersMap {
+  const map: AgentNumbersMap = {};
+  for (const c of COMPANIES) {
+    map[c.id] = { personal: makeEmptyField(), partners: makeEmptyField() };
+  }
+  return map;
+}
+
 export default function SettingsPage() {
   const profile = useAuthStore((s) => s.profile);
   const dashboard = useDataStore((s) => s.dashboard);
@@ -23,6 +56,95 @@ export default function SettingsPage() {
   const displayEmail = profile?.email || '---';
   const displayPhone = profile?.phone || '---';
   const initials = displayName.slice(0, 2);
+
+  const [agentNumbers, setAgentNumbers] = useState<AgentNumbersMap>(buildInitialMap);
+  const [agentNumbersLoading, setAgentNumbersLoading] = useState(false);
+
+  useEffect(() => {
+    let cancelled = false;
+    async function load() {
+      setAgentNumbersLoading(true);
+      try {
+        const res = await api.getAgentNumbers();
+        if (!cancelled && res.data) {
+          setAgentNumbers((prev) => {
+            const next = buildInitialMap();
+            for (const entry of res.data!) {
+              const id = entry.insuranceCompanyId;
+              const pt = entry.portfolioType;
+              if (next[id]) {
+                next[id][pt] = { ...makeEmptyField(), value: entry.companyAgentNumber };
+              }
+            }
+            // preserve any unsaved user edits
+            for (const id of Object.keys(next)) {
+              for (const pt of ['personal', 'partners'] as PortfolioType[]) {
+                if (prev[id]?.[pt]?.value && !next[id][pt].value) {
+                  next[id][pt].value = prev[id][pt].value;
+                }
+              }
+            }
+            return next;
+          });
+        }
+      } catch {
+        // silent — not critical for page to work
+      } finally {
+        if (!cancelled) setAgentNumbersLoading(false);
+      }
+    }
+    load();
+    return () => { cancelled = true; };
+  }, []);
+
+  function setFieldValue(companyId: string, pt: PortfolioType, value: string) {
+    setAgentNumbers((prev) => ({
+      ...prev,
+      [companyId]: {
+        ...prev[companyId],
+        [pt]: { ...prev[companyId][pt], value, error: null },
+      },
+    }));
+  }
+
+  function setFieldState(companyId: string, pt: PortfolioType, patch: Partial<AgentNumberField>) {
+    setAgentNumbers((prev) => ({
+      ...prev,
+      [companyId]: {
+        ...prev[companyId],
+        [pt]: { ...prev[companyId][pt], ...patch },
+      },
+    }));
+  }
+
+  async function handleSave(companyId: string, pt: PortfolioType) {
+    const field = agentNumbers[companyId]?.[pt];
+    if (!field || !field.value.trim()) return;
+    setFieldState(companyId, pt, { saving: true, error: null });
+    try {
+      await api.upsertAgentNumber({
+        insuranceCompanyId: companyId,
+        companyAgentNumber: field.value.trim(),
+        portfolioType: pt,
+      });
+    } catch (err) {
+      const msg = err instanceof api.ApiError ? (err.serverError ?? 'שגיאה בשמירה') : 'שגיאה בשמירה';
+      setFieldState(companyId, pt, { saving: false, error: msg });
+      return;
+    }
+    setFieldState(companyId, pt, { saving: false });
+  }
+
+  async function handleDelete(companyId: string, pt: PortfolioType) {
+    setFieldState(companyId, pt, { deleting: true, error: null });
+    try {
+      await api.deleteAgentNumber({ insuranceCompanyId: companyId, portfolioType: pt });
+      setFieldState(companyId, pt, { deleting: false, value: '' });
+    } catch (err) {
+      const msg = err instanceof api.ApiError ? (err.serverError ?? 'שגיאה במחיקה') : 'שגיאה במחיקה';
+      setFieldState(companyId, pt, { deleting: false, error: msg });
+    }
+  }
 
   return (
     <div className="p-8 min-h-screen">
@@ -167,6 +289,94 @@ export default function SettingsPage() {
               </div>
             </section>
           </div>
+        </div>
+
+        {/* Agent Numbers by Portfolio Type */}
+        <div className="mt-8">
+          <section className="bg-surface-container-lowest rounded-lg shadow-editorial p-8">
+            <div className="flex items-center gap-3 mb-2">
+              <Icon name="badge" className="text-primary" />
+              <h3 className="text-xl font-bold font-headline text-primary">מספרי סוכן לפי תיק</h3>
+            </div>
+            <p className="text-sm text-on-surface-variant mb-6">
+              הגדר מספרי סוכן נפרדים לתיק האישי ולתיק השותפים לכל חברת ביטוח
+            </p>
+
+            {agentNumbersLoading ? (
+              <div className="flex items-center justify-center py-10">
+                <div className="w-8 h-8 rounded-full border-4 border-primary/20 border-t-primary animate-spin" />
+              </div>
+            ) : (
+              <div className="space-y-6">
+                {COMPANIES.map((company) => {
+                  const fields = agentNumbers[company.id];
+                  if (!fields) return null;
+                  return (
+                    <div key={company.id} className="bg-surface-container-low rounded-lg p-6">
+                      <div className="flex items-center gap-3 mb-4">
+                        <CompanyLogo company={company.id} size="sm" />
+                        <h4 className="font-bold text-on-surface">{company.name}</h4>
+                      </div>
+                      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                        {(['personal', 'partners'] as PortfolioType[]).map((pt) => {
+                          const field = fields[pt];
+                          const label = pt === 'personal' ? 'תיק אישי' : 'תיק שותפים';
+                          const icon = pt === 'personal' ? 'person' : 'group';
+                          return (
+                            <div key={pt} className="space-y-2">
+                              <div className="flex items-center gap-2">
+                                <Icon name={icon} size="sm" className="text-on-surface-variant" />
+                                <span className="text-sm font-semibold text-on-surface">{label}</span>
+                              </div>
+                              <div className="flex gap-2">
+                                <input
+                                  type="text"
+                                  value={field.value}
+                                  onChange={(e) => setFieldValue(company.id, pt, e.target.value)}
+                                  placeholder={`מספר סוכן — ${label}`}
+                                  aria-label={`מספר סוכן ${label} — ${company.name}`}
+                                  className="flex-1 bg-surface border border-outline-variant/40 rounded-lg px-3 py-2 text-sm font-mono focus:outline-none focus:ring-2 focus:ring-primary/40 focus:border-primary"
+                                />
+                                <button
+                                  onClick={() => handleSave(company.id, pt)}
+                                  disabled={field.saving || !field.value.trim()}
+                                  aria-label={`שמור ${label} — ${company.name}`}
+                                  className="px-3 py-2 bg-secondary text-on-secondary rounded-lg text-sm font-bold hover:opacity-90 disabled:opacity-40 disabled:cursor-not-allowed transition-opacity"
+                                >
+                                  {field.saving ? (
+                                    <div className="w-4 h-4 rounded-full border-2 border-on-secondary/30 border-t-on-secondary animate-spin" />
+                                  ) : (
+                                    <Icon name="save" size="sm" />
+                                  )}
+                                </button>
+                                {field.value && (
+                                  <button
+                                    onClick={() => handleDelete(company.id, pt)}
+                                    disabled={field.deleting}
+                                    aria-label={`מחק ${label} — ${company.name}`}
+                                    className="px-3 py-2 bg-error-container text-on-error-container rounded-lg text-sm font-bold hover:opacity-90 disabled:opacity-40 disabled:cursor-not-allowed transition-opacity"
+                                  >
+                                    {field.deleting ? (
+                                      <div className="w-4 h-4 rounded-full border-2 border-on-error-container/30 border-t-on-error-container animate-spin" />
+                                    ) : (
+                                      <Icon name="delete_outline" size="sm" />
+                                    )}
+                                  </button>
+                                )}
+                              </div>
+                              {field.error && (
+                                <p className="text-xs text-error">{field.error}</p>
+                              )}
+                            </div>
+                          );
+                        })}
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            )}
+          </section>
         </div>
 
         {/* Commission Rates Editor */}
