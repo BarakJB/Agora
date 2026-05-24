@@ -1,5 +1,6 @@
 import { useState, useEffect, useMemo } from 'react';
 import Icon from '../components/ui/Icon';
+import CompanyLogo from '../components/common/CompanyLogo';
 import { TrafficLightPill } from '../components/common/TrafficLight';
 import * as api from '../services/api';
 import { getContractCoverageSummary } from '../services/api';
@@ -224,6 +225,7 @@ export default function PortfolioPage() {
               <th className="text-start py-2 pe-3 font-medium">שם</th>
               <th className="text-start py-2 pe-3 font-medium">ת.ז</th>
               <th className="text-start py-2 pe-3 font-medium">ענפים</th>
+              <th className="text-start py-2 pe-3 font-medium">חברות</th>
               <th className="text-start py-2 pe-3 font-medium cursor-pointer select-none" onClick={() => handleSort('monthlyAvg')}>
                 <span className="inline-flex items-center gap-1">ממוצע חודשי <Icon name={sortIcon('monthlyAvg')} size="sm" /></span>
               </th>
@@ -248,6 +250,18 @@ export default function PortfolioPage() {
                     {c.branches.map((b) => (
                       <span key={b} className="px-1.5 py-0.5 bg-primary-fixed rounded text-[10px] text-primary font-medium">{b}</span>
                     ))}
+                  </div>
+                </td>
+                <td className="py-2.5 pe-3">
+                  <div className="flex items-center gap-0.5">
+                    {(c.insuranceCompanies ?? []).slice(0, 3).map((co) => (
+                      <CompanyLogo key={co} company={co} size="xs" />
+                    ))}
+                    {(c.insuranceCompanies ?? []).length > 3 && (
+                      <span className="text-[10px] text-on-surface-variant font-medium ms-0.5">
+                        +{(c.insuranceCompanies ?? []).length - 3}
+                      </span>
+                    )}
                   </div>
                 </td>
                 <td className="py-2.5 pe-3 font-medium">{fmt(c.monthlyAvg)}{'\u20AA'}</td>

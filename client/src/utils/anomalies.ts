@@ -40,6 +40,7 @@ interface ClientAggregate {
   amount: number;
   products: Set<string>;
   policies: Set<string>;
+  companies: Set<string>;
 }
 
 interface PolicyAggregate {
@@ -70,17 +71,21 @@ function buildClientAndPolicyMaps(rows: CommissionRow[]): {
       existing.amount += c.amount;
       if (product) existing.products.add(product);
       if (policyKey) existing.policies.add(policyKey);
+      if (c.insuranceCompany) existing.companies.add(c.insuranceCompany);
     } else {
       const products = new Set<string>();
       if (product) products.add(product);
       const policies = new Set<string>();
       if (policyKey) policies.add(policyKey);
+      const companies = new Set<string>();
+      if (c.insuranceCompany) companies.add(c.insuranceCompany);
       clientMap.set(clientKey, {
         name: c.clientName,
         id: c.clientIdNumber || '',
         amount: c.amount,
         products,
         policies,
+        companies,
       });
     }
 
@@ -146,12 +151,14 @@ export function detectAnomalies(commissions: CommissionRow[], availableMonths: s
       if (!currClientMap.has(clientKey)) {
         if (prevData.amount >= 10) {
           const firstPolicy = Array.from(prevData.policies)[0];
+          const firstCompany = Array.from(prevData.companies)[0];
           lostClients.push({
             name: prevData.name,
             id: prevData.id,
             amount: prevData.amount,
             product: Array.from(prevData.products).join(', ') || '—',
             policyNumber: firstPolicy,
+            insuranceCompany: firstCompany,
           });
         }
         return;

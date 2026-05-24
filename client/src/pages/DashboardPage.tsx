@@ -822,6 +822,7 @@ export default function DashboardPage() {
                               <th className="text-start py-2 pe-3">שם</th>
                               <th className="text-start py-2 pe-3">ת.ז</th>
                               <th className="text-start py-2 pe-3">מוצר</th>
+                              <th className="text-start py-2 pe-3">חברה</th>
                               <th className="text-end py-2">סכום</th>
                             </tr>
                           </thead>
@@ -831,6 +832,16 @@ export default function DashboardPage() {
                                 <td className="py-1.5 pe-3 font-medium">{client.name}</td>
                                 <td className="py-1.5 pe-3 text-on-surface-variant">{client.id || '—'}</td>
                                 <td className="py-1.5 pe-3 text-on-surface-variant">{client.product}</td>
+                                <td className="py-1.5 pe-3">
+                                  {client.insuranceCompany ? (
+                                    <span className="inline-flex items-center gap-1">
+                                      <CompanyLogo company={client.insuranceCompany} size="xs" />
+                                      <span className="text-on-surface-variant text-[10px] leading-tight">{client.insuranceCompany}</span>
+                                    </span>
+                                  ) : (
+                                    <span className="text-on-surface-variant/40">לא ידוע</span>
+                                  )}
+                                </td>
                                 <td className={`py-1.5 text-end font-bold ${
                                   alert.type === 'client_lost' ? 'text-error' :
                                   alert.type === 'client_spike' ? 'text-error' :
@@ -846,7 +857,7 @@ export default function DashboardPage() {
                           </tbody>
                           <tfoot>
                             <tr className="font-bold text-on-surface">
-                              <td colSpan={3} className="py-2 pt-3">סה״כ {alert.clients.length} לקוחות</td>
+                              <td colSpan={4} className="py-2 pt-3">סה״כ {alert.clients.length} לקוחות</td>
                               <td className={`py-2 pt-3 text-end ${alert.type === 'client_negative' ? 'text-error' : 'text-primary'}`}>
                                 {fmt(Math.round(Math.abs(alert.clients.reduce((s, c) => s + c.amount, 0))))}₪
                               </td>

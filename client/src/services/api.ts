@@ -318,6 +318,7 @@ export interface PortfolioTopClient {
   monthlyAvg: number;
   months: number;
   branches: string[];
+  insuranceCompanies: string[];
   trend: 'up' | 'down' | 'stable';
 }
 

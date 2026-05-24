@@ -224,7 +224,8 @@ async function getPortfolioAnalysis(agentId) {
             MAX(insured_id) AS id,
             ROUND(SUM(commission_amount), 2) AS total,
             COUNT(DISTINCT processing_month) AS months,
-            GROUP_CONCAT(DISTINCT branch) AS branches
+            GROUP_CONCAT(DISTINCT branch) AS branches,
+            GROUP_CONCAT(DISTINCT CASE WHEN insurance_company IS NOT NULL AND insurance_company != '' THEN insurance_company END) AS insurance_companies
      FROM sales_transactions
      WHERE agent_id = ?
        AND report_type IN ${POLICY_REPORT_TYPES}
@@ -269,6 +270,7 @@ async function getPortfolioAnalysis(agentId) {
             monthlyAvg: Math.round(total / months),
             months,
             branches: r.branches ? r.branches.split(',').filter(Boolean) : [],
+            insuranceCompanies: r.insurance_companies ? r.insurance_companies.split(',').filter(Boolean) : [],
             trend,
         };
     });

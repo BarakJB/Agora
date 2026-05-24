@@ -359,6 +359,7 @@ export interface PortfolioTopClient {
   monthlyAvg: number;
   months: number;
   branches: string[];
+  insuranceCompanies: string[];
   trend: 'up' | 'down' | 'stable';
 }
 
@@ -449,7 +450,8 @@ export async function getPortfolioAnalysis(agentId: string): Promise<PortfolioAn
             MAX(insured_id) AS id,
             ROUND(SUM(commission_amount), 2) AS total,
             COUNT(DISTINCT processing_month) AS months,
-            GROUP_CONCAT(DISTINCT branch) AS branches
+            GROUP_CONCAT(DISTINCT branch) AS branches,
+            GROUP_CONCAT(DISTINCT CASE WHEN insurance_company IS NOT NULL AND insurance_company != '' THEN insurance_company END) AS insurance_companies
      FROM sales_transactions
      WHERE agent_id = ?
        AND report_type IN ${POLICY_REPORT_TYPES}
@@ -499,6 +501,7 @@ export async function getPortfolioAnalysis(agentId: string): Promise<PortfolioAn
       monthlyAvg: Math.round(total / months),
       months,
       branches: r.branches ? (r.branches as string).split(',').filter(Boolean) : [],
+      insuranceCompanies: r.insurance_companies ? (r.insurance_companies as string).split(',').filter(Boolean) : [],
       trend,
     };
   });
