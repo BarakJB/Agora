@@ -19,6 +19,8 @@ import {
 } from '../utils/profitThresholds';
 import type { TrendValue } from '../utils/profitThresholds';
 import type { NavigateFunction } from 'react-router-dom';
+import AssignCompanyModal from '../components/anomalies/AssignCompanyModal';
+import { getCompanyDisplay, normalizeCompanyName } from '../utils/insuranceCompanies';
 
 /* Commission type breakdown config */
 interface BreakdownType {
@@ -108,6 +110,8 @@ export default function DashboardPage() {
   const [salaryExpanded, setSalaryExpanded] = useState(false);
   const [showNetOfCover, setShowNetOfCover] = useState(false);
   const [portfolioData, setPortfolioData] = useState<api.PortfolioAnalysis | null>(null);
+  const [assignTarget, setAssignTarget] = useState<{ name: string; id: string; policyNumber?: string } | null>(null);
+  const [assignedCompanies, setAssignedCompanies] = useState<Record<string, string>>({});
 
   // Load from DB — called on every mount and after upload
   const loadFromDb = useCallback(async () => {
@@ -833,14 +837,30 @@ export default function DashboardPage() {
                                 <td className="py-1.5 pe-3 text-on-surface-variant">{client.id || '—'}</td>
                                 <td className="py-1.5 pe-3 text-on-surface-variant">{client.product}</td>
                                 <td className="py-1.5 pe-3">
-                                  {client.insuranceCompany ? (
-                                    <span className="inline-flex items-center gap-1">
-                                      <CompanyLogo company={client.insuranceCompany} size="xs" />
-                                      <span className="text-on-surface-variant text-[10px] leading-tight">{client.insuranceCompany}</span>
-                                    </span>
-                                  ) : (
-                                    <span className="text-on-surface-variant/40">לא ידוע</span>
-                                  )}
+                                  {(() => {
+                                    const key = `${client.id}|${client.policyNumber ?? ''}`;
+                                    const resolved = assignedCompanies[key] ?? client.insuranceCompany;
+                                    if (resolved) {
+                                      return (
+                                        <span className="inline-flex items-center gap-1 text-on-surface-variant">
+                                          <CompanyLogo company={resolved} size="xs" />
+                                          {getCompanyDisplay(normalizeCompanyName(resolved) ?? resolved).name}
+                                        </span>
+                                      );
+                                    }
+                                    return (
+                                      <span className="inline-flex items-center gap-1.5">
+                                        <span className="text-on-surface-variant/50 text-[11px]">לא ידוע</span>
+                                        <button
+                                          onClick={(e) => { e.stopPropagation(); setAssignTarget({ name: client.name, id: client.id ?? '', policyNumber: client.policyNumber ?? undefined }); }}
+                                          className="text-primary text-[11px] font-semibold hover:underline focus:outline-none focus:ring-1 focus:ring-primary/40 rounded px-1"
+                                          aria-label={`שייך חברה ל${client.name}`}
+                                        >
+                                          שייך
+                                        </button>
+                                      </span>
+                                    );
+                                  })()}
                                 </td>
                                 <td className={`py-1.5 text-end font-bold ${
                                   alert.type === 'client_lost' ? 'text-error' :
@@ -986,6 +1006,19 @@ export default function DashboardPage() {
       </div>
 
       <UploadModal open={showUpload} mode={uploadMode} onComplete={handleUploadComplete} onClose={() => setShowUpload(false)} />
+
+      {assignTarget && (
+        <AssignCompanyModal
+          isOpen={true}
+          onClose={() => setAssignTarget(null)}
+          onAssigned={(company) => {
+            setAssignedCompanies(prev => ({ ...prev, [`${assignTarget.id}|${assignTarget.policyNumber ?? ''}`]: company }));
+            setAssignTarget(null);
+            loadFromDb();
+          }}
+          anomalyClient={assignTarget}
+        />
+      )}
     </>
   );
 }
