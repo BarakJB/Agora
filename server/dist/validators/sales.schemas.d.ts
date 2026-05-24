@@ -1,4 +1,32 @@
 import { z } from 'zod';
+export declare const summaryByTypeQuerySchema: z.ZodObject<{
+    month: z.ZodString;
+    portfolioType: z.ZodDefault<z.ZodEnum<["personal", "partners", "all"]>>;
+    compareToPrevMonth: z.ZodDefault<z.ZodEffects<z.ZodEnum<["true", "false"]>, boolean, "true" | "false">>;
+}, "strip", z.ZodTypeAny, {
+    month: string;
+    portfolioType: "personal" | "partners" | "all";
+    compareToPrevMonth: boolean;
+}, {
+    month: string;
+    portfolioType?: "personal" | "partners" | "all" | undefined;
+    compareToPrevMonth?: "true" | "false" | undefined;
+}>;
+export type SummaryByTypeQuery = z.infer<typeof summaryByTypeQuerySchema>;
+export declare const companyProductQuerySchema: z.ZodObject<{
+    fromMonth: z.ZodOptional<z.ZodString>;
+    toMonth: z.ZodOptional<z.ZodString>;
+    portfolioType: z.ZodDefault<z.ZodEnum<["personal", "partners", "all"]>>;
+}, "strip", z.ZodTypeAny, {
+    portfolioType: "personal" | "partners" | "all";
+    fromMonth?: string | undefined;
+    toMonth?: string | undefined;
+}, {
+    portfolioType?: "personal" | "partners" | "all" | undefined;
+    fromMonth?: string | undefined;
+    toMonth?: string | undefined;
+}>;
+export type CompanyProductQuery = z.infer<typeof companyProductQuerySchema>;
 export declare const contractCoverageQuerySchema: z.ZodObject<{
     page: z.ZodDefault<z.ZodNumber>;
     limit: z.ZodDefault<z.ZodNumber>;

@@ -3,6 +3,7 @@ Object.defineProperty(exports, "__esModule", { value: true });
 exports.predictionRouter = void 0;
 const express_1 = require("express");
 const salary_prediction_service_js_1 = require("../services/salary-prediction.service.js");
+const next_month_forecast_service_js_1 = require("../services/next-month-forecast.service.js");
 const validate_js_1 = require("../middleware/validate.js");
 const prediction_schemas_js_1 = require("../validators/prediction.schemas.js");
 exports.predictionRouter = (0, express_1.Router)();
@@ -45,6 +46,22 @@ exports.predictionRouter.get('/monthly', (0, validate_js_1.validate)({ query: pr
             return;
         }
         res.json({ data: prediction, error: null, meta: null });
+    }
+    catch (err) {
+        next(err);
+    }
+});
+/**
+ * GET /api/v1/predictions/next-month?portfolioType=...
+ * Forecast next month commission based on actual sales_transactions history.
+ * Auth: required (agent_id from JWT).
+ */
+exports.predictionRouter.get('/next-month', (0, validate_js_1.validate)({ query: prediction_schemas_js_1.nextMonthForecastQuerySchema }), async (_req, res, next) => {
+    try {
+        const agentId = (res.locals.sub || res.locals.agentId);
+        const { portfolioType } = res.locals.parsedQuery;
+        const forecast = await (0, next_month_forecast_service_js_1.predictNextMonthFromTransactions)(agentId, portfolioType);
+        res.json({ data: forecast, error: null, meta: null });
     }
     catch (err) {
         next(err);

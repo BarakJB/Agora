@@ -7,6 +7,8 @@ import { MetricCard } from '../components/common/MetricCard';
 import { useAuthStore } from '../store/authStore';
 import type { CommissionRow } from '../store/dataStore';
 import * as api from '../services/api';
+import { salesApi, settingsApi } from '../services/api';
+import type { SalesSummaryByTypeResponse, RevenueForecastResponse } from '../services/api';
 import { detectAnomalies, anomalyKey } from '../utils/anomalies';
 import type { Anomaly } from '../utils/anomalies';
 import { formatMonth, normalizeMonth, fmt } from '../utils/dateFormat';
@@ -102,6 +104,7 @@ export default function DashboardPage() {
   const setAgreementUploaded = useAuthStore((s) => s.setAgreementUploaded);
   const agreementUploaded = profile?.agreementUploaded ?? false;
   const portfolioFilter = usePortfolioFilterStore((s) => s.portfolioFilter);
+  const hasMultiplePortfolios = usePortfolioFilterStore((s) => s.hasMultiplePortfolios);
 
   // Direct state — loaded fresh from DB on every mount. No localStorage dependency.
   const [commissions, setCommissions] = useState<CommissionRow[]>([]);
@@ -115,6 +118,18 @@ export default function DashboardPage() {
   const [portfolioData, setPortfolioData] = useState<api.PortfolioAnalysis | null>(null);
   const [assignTarget, setAssignTarget] = useState<{ name: string; id: string; policyNumber?: string } | null>(null);
   const [assignedCompanies, setAssignedCompanies] = useState<Record<string, string>>({});
+
+  // F1 — 4 main number cards
+  const [summaryByType, setSummaryByType] = useState<SalesSummaryByTypeResponse | null>(null);
+  const [summaryLoading, setSummaryLoading] = useState(false);
+
+  // F3 — Forecast widget
+  const [forecast, setForecast] = useState<RevenueForecastResponse | null>(null);
+  const [forecastLoading, setForecastLoading] = useState(false);
+  const [forecastTooltipOpen, setForecastTooltipOpen] = useState(false);
+
+  // F7 — Partners split
+  const [partnersSplitPct, setPartnersSplitPct] = useState<number | null>(null);
 
   // Load from DB — called on every mount, after upload, and on filter change
   const loadFromDb = useCallback(async () => {
@@ -146,6 +161,14 @@ export default function DashboardPage() {
     }
   }, [userMode, loadFromDb]);
 
+  // F7 — load partners split pct once on mount
+  useEffect(() => {
+    if (userMode !== 'new') return;
+    settingsApi.getPartnersSplit()
+      .then((res) => { if (res.data) setPartnersSplitPct(res.data.pct); })
+      .catch(() => {});
+  }, [userMode]);
+
   // Derived data
   const availableMonths = useMemo(() => {
     const months = new Set<string>();
@@ -160,6 +183,44 @@ export default function DashboardPage() {
       setSelectedMonth(availableMonths[availableMonths.length - 1]);
     }
   }, [availableMonths, selectedMonth]);
+
+  // F1 + F3 — load summary and forecast when month or filter changes
+  useEffect(() => {
+    if (userMode !== 'new' || !selectedMonth) return;
+    let cancelled = false;
+
+    async function loadSummary() {
+      setSummaryLoading(true);
+      try {
+        const res = await salesApi.getSummaryByType({
+          month: selectedMonth,
+          portfolioType: portfolioFilter,
+          compareToPrevMonth: true,
+        });
+        if (!cancelled) setSummaryByType(res.data);
+      } catch {
+        // non-critical — existing cards still work
+      } finally {
+        if (!cancelled) setSummaryLoading(false);
+      }
+    }
+
+    async function loadForecast() {
+      setForecastLoading(true);
+      try {
+        const res = await salesApi.getRevenueForecast({ portfolioType: portfolioFilter });
+        if (!cancelled) setForecast(res.data);
+      } catch {
+        // non-critical
+      } finally {
+        if (!cancelled) setForecastLoading(false);
+      }
+    }
+
+    loadSummary();
+    loadForecast();
+    return () => { cancelled = true; };
+  }, [userMode, selectedMonth, portfolioFilter]);
 
   const filtered = useMemo(() =>
     commissions.filter(c => c.processingMonth === selectedMonth),
@@ -437,6 +498,71 @@ export default function DashboardPage() {
             <Icon name="chevron_left" size="sm" />
           </button>
         </div>
+
+        {/* F1 — 4 main number cards by commission type */}
+        {(summaryByType || summaryLoading) && (
+          <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
+            {summaryLoading && !summaryByType ? (
+              Array.from({ length: 4 }).map((_, i) => (
+                <div key={i} className="bg-surface-container-lowest rounded-lg p-5 animate-pulse h-28" />
+              ))
+            ) : summaryByType ? (
+              <>
+                <SummaryTypeCard
+                  title="נפרעים"
+                  value={summaryByType.current.nifraim}
+                  changePct={summaryByType.changePct?.nifraim}
+                  icon="autorenew"
+                  accentClass="text-primary"
+                  bgClass="bg-primary-fixed"
+                />
+                <SummaryTypeCard
+                  title="היקף"
+                  value={summaryByType.current.hekef}
+                  changePct={summaryByType.changePct?.hekef}
+                  icon="bolt"
+                  accentClass="text-secondary"
+                  bgClass="bg-secondary-fixed"
+                />
+                <SummaryTypeCard
+                  title="צבירה"
+                  value={summaryByType.current.accumulation}
+                  changePct={summaryByType.changePct?.accumulation}
+                  icon="savings"
+                  accentClass="text-on-tertiary-container"
+                  bgClass="bg-tertiary-fixed"
+                />
+                <SummaryTypeCard
+                  title="ברוטו כולל"
+                  value={summaryByType.current.total}
+                  changePct={summaryByType.changePct?.total}
+                  icon="emoji_events"
+                  accentClass="text-white"
+                  bgClass="editorial-gradient"
+                  isFeatured
+                />
+              </>
+            ) : null}
+          </div>
+        )}
+
+        {/* F3 — Forecast widget */}
+        {(forecast || forecastLoading) && (
+          <ForecastWidget
+            forecast={forecast}
+            loading={forecastLoading}
+            tooltipOpen={forecastTooltipOpen}
+            onToggleTooltip={() => setForecastTooltipOpen((v) => !v)}
+          />
+        )}
+
+        {/* F7 — Partners split widget */}
+        {hasMultiplePortfolios && portfolioFilter === 'all' && partnersSplitPct !== null && summaryByType && (
+          <PartnersSplitWidget
+            summaryByType={summaryByType}
+            splitPct={partnersSplitPct}
+          />
+        )}
 
         {/* 3 Main Cards: Previous | Current | Prediction */}
         <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
@@ -1038,6 +1164,217 @@ export default function DashboardPage() {
         />
       )}
     </>
+  );
+}
+
+/* ─── F1: SummaryTypeCard ─── */
+interface SummaryTypeCardProps {
+  title: string;
+  value: number;
+  changePct?: number;
+  icon: string;
+  accentClass: string;
+  bgClass: string;
+  isFeatured?: boolean;
+}
+
+function SummaryTypeCard({ title, value, changePct, icon, accentClass, bgClass, isFeatured = false }: SummaryTypeCardProps) {
+  const hasChange = changePct !== undefined && changePct !== null;
+  const positive = hasChange && changePct! >= 0;
+
+  return (
+    <div className={`${bgClass} rounded-lg p-5 relative overflow-hidden ${isFeatured ? 'col-span-2 lg:col-span-1' : ''}`}>
+      {isFeatured && (
+        <div className="absolute -bottom-4 -left-4 w-20 h-20 bg-white/10 rounded-full blur-xl" />
+      )}
+      <div className="flex items-center gap-2 mb-3">
+        <Icon name={icon} size="sm" className={accentClass} />
+        <span className={`text-[10px] font-bold uppercase tracking-widest ${accentClass} opacity-70`}>{title}</span>
+      </div>
+      <div className="flex items-baseline gap-1.5">
+        <span className={`font-black font-headline ${isFeatured ? 'text-3xl' : 'text-2xl'} ${accentClass}`}>
+          {fmt(Math.round(value))}
+        </span>
+        <span className={`text-sm font-bold ${accentClass} opacity-40`}>&#8362;</span>
+      </div>
+      {hasChange && (
+        <div className={`mt-2 flex items-center gap-1 text-xs font-semibold ${
+          isFeatured
+            ? positive ? 'text-white/90' : 'text-white/70'
+            : positive ? 'text-secondary' : 'text-error'
+        }`}>
+          <Icon name={positive ? 'trending_up' : 'trending_down'} size="sm" />
+          <span>{positive ? '+' : ''}{changePct!.toFixed(0)}% מהחודש קודם</span>
+        </div>
+      )}
+    </div>
+  );
+}
+
+/* ─── F3: ForecastWidget ─── */
+interface ForecastWidgetProps {
+  forecast: RevenueForecastResponse | null;
+  loading: boolean;
+  tooltipOpen: boolean;
+  onToggleTooltip: () => void;
+}
+
+const CONFIDENCE_LABEL: Record<RevenueForecastResponse['confidence'], string> = {
+  high: 'גבוהה',
+  medium: 'בינונית',
+  low: 'נמוכה',
+};
+
+const CONFIDENCE_COLOR: Record<RevenueForecastResponse['confidence'], string> = {
+  high: 'text-secondary',
+  medium: 'text-on-tertiary-container',
+  low: 'text-error',
+};
+
+function ForecastWidget({ forecast, loading, tooltipOpen, onToggleTooltip }: ForecastWidgetProps) {
+  if (loading && !forecast) {
+    return <div className="bg-surface-container-lowest rounded-lg p-6 animate-pulse h-36" />;
+  }
+  if (!forecast) return null;
+
+  const total = forecast.predictedTotal;
+  const { nifraim, hekef, accumulation } = forecast.breakdown;
+  const bars = [
+    { label: 'נפרעים', value: nifraim, color: 'bg-primary' },
+    { label: 'היקף', value: hekef, color: 'bg-secondary' },
+    { label: 'צבירה', value: accumulation, color: 'bg-on-tertiary-container' },
+  ].filter((b) => b.value > 0);
+
+  const lowData = forecast.basedOnMonths < 3;
+
+  return (
+    <div className="editorial-gradient rounded-lg p-6 text-white relative overflow-hidden">
+      <div className="absolute -bottom-4 -left-4 w-24 h-24 bg-white/10 rounded-full blur-xl" />
+      <div className="relative z-10">
+        <div className="flex items-start justify-between mb-4">
+          <div>
+            <p className="text-[10px] font-bold uppercase tracking-widest text-white/60 mb-1 font-headline">
+              תחזית חודש הבא
+            </p>
+            <div className="flex items-baseline gap-1.5">
+              <span className="text-4xl font-black font-headline">{fmt(Math.round(total))}</span>
+              <span className="text-xl font-bold text-white/40">&#8362;</span>
+            </div>
+          </div>
+          <div className="text-end">
+            <p className="text-[10px] text-white/60 mb-1">רמת ביטחון</p>
+            <span className={`text-sm font-bold ${CONFIDENCE_COLOR[forecast.confidence]}`}>
+              {CONFIDENCE_LABEL[forecast.confidence]}
+            </span>
+            <p className="text-[10px] text-white/50 mt-0.5">
+              מבוסס על {forecast.basedOnMonths} חודשים
+            </p>
+          </div>
+        </div>
+
+        {lowData && (
+          <div className="mb-3 bg-white/10 rounded-lg px-3 py-2 flex items-center gap-2">
+            <Icon name="info" size="sm" className="text-white/70" />
+            <p className="text-xs text-white/80">נדרשים לפחות 3 חודשי נתונים לתחזית אמינה</p>
+          </div>
+        )}
+
+        {bars.length > 0 && (
+          <div className="space-y-2 mb-4">
+            {bars.map((bar) => (
+              <div key={bar.label} className="flex items-center gap-3">
+                <span className="text-xs text-white/70 w-14 shrink-0">{bar.label}</span>
+                <div className="flex-1 h-1.5 bg-white/20 rounded-full overflow-hidden">
+                  <div
+                    className={`h-full ${bar.color} rounded-full`}
+                    style={{ width: total > 0 ? `${(bar.value / total) * 100}%` : '0%' }}
+                  />
+                </div>
+                <span className="text-xs font-bold text-white/90 w-20 text-end">
+                  {fmt(Math.round(bar.value))} &#8362;
+                </span>
+              </div>
+            ))}
+          </div>
+        )}
+
+        {forecast.assumptions.length > 0 && (
+          <div className="relative">
+            <button
+              onClick={onToggleTooltip}
+              className="text-[11px] text-white/60 underline hover:text-white/90 transition-colors focus:outline-none focus:ring-1 focus:ring-white/40 rounded"
+              aria-expanded={tooltipOpen}
+              aria-label="הצג הנחות תחזית"
+            >
+              מה זה אומר?
+            </button>
+            {tooltipOpen && (
+              <div className="absolute bottom-full mb-2 right-0 bg-surface-container-lowest text-on-surface rounded-lg shadow-editorial p-4 w-64 z-20 border border-outline-variant/30">
+                <p className="text-xs font-bold mb-2 text-on-surface">הנחות התחזית:</p>
+                <ul className="space-y-1">
+                  {forecast.assumptions.map((a, i) => (
+                    <li key={i} className="text-xs text-on-surface-variant flex items-start gap-1.5">
+                      <span className="text-primary mt-0.5 shrink-0">•</span>
+                      {a}
+                    </li>
+                  ))}
+                </ul>
+                <button
+                  onClick={onToggleTooltip}
+                  className="mt-3 text-[10px] text-on-surface-variant hover:text-primary"
+                  aria-label="סגור הסבר"
+                >
+                  סגור
+                </button>
+              </div>
+            )}
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
+
+/* ─── F7: PartnersSplitWidget ─── */
+interface PartnersSplitWidgetProps {
+  summaryByType: SalesSummaryByTypeResponse;
+  splitPct: number;
+}
+
+function PartnersSplitWidget({ summaryByType, splitPct }: PartnersSplitWidgetProps) {
+  const total = summaryByType.current.total;
+  const personalEst = Math.round(total * 0.5);
+  const partnersEst = Math.round(total * 0.5);
+  const myShareOfPartners = Math.round(partnersEst * (splitPct / 100));
+  const myActualTotal = personalEst + myShareOfPartners;
+
+  return (
+    <div className="bg-surface-container-lowest rounded-lg p-5 border border-outline-variant/20 shadow-editorial-sm">
+      <div className="flex items-center gap-2 mb-4">
+        <Icon name="group" size="sm" className="text-primary/60" />
+        <h3 className="text-sm font-black font-headline text-on-surface">חלוקת תיק שותפים</h3>
+        <span className="text-xs text-on-surface-variant bg-surface-container px-2 py-0.5 rounded-full">
+          {splitPct}% חלקך
+        </span>
+      </div>
+      <div className="grid grid-cols-3 gap-4">
+        <div className="bg-surface-container-low rounded-lg p-3">
+          <p className="text-[10px] text-on-surface-variant mb-1">תיק אישי (הערכה)</p>
+          <p className="font-black font-headline text-primary">{fmt(personalEst)} &#8362;</p>
+        </div>
+        <div className="bg-surface-container-low rounded-lg p-3">
+          <p className="text-[10px] text-on-surface-variant mb-1">
+            תיק שותפים &times;{splitPct}%
+          </p>
+          <p className="font-black font-headline text-secondary">{fmt(myShareOfPartners)} &#8362;</p>
+          <p className="text-[10px] text-on-surface-variant">מתוך {fmt(partnersEst)}&#8362;</p>
+        </div>
+        <div className="bg-primary-fixed rounded-lg p-3">
+          <p className="text-[10px] text-primary/70 mb-1">סה"כ שלי בפועל</p>
+          <p className="font-black font-headline text-primary text-xl">{fmt(myActualTotal)} &#8362;</p>
+        </div>
+      </div>
+    </div>
   );
 }
 

@@ -26,5 +26,10 @@ export const monthlyPredictionQuerySchema = z.object({
   period: z.string().regex(periodPattern, 'period must be YYYY-MM format'),
 });
 
+export const nextMonthForecastQuerySchema = z.object({
+  portfolioType: z.enum(['personal', 'partners', 'all']).default('all'),
+});
+
 export type DealPredictionBody = z.infer<typeof dealPredictionBodySchema>;
 export type MonthlyPredictionQuery = z.infer<typeof monthlyPredictionQuerySchema>;
+export type NextMonthForecastQuery = z.infer<typeof nextMonthForecastQuerySchema>;

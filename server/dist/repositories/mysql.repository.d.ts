@@ -214,6 +214,8 @@ export declare function getAgentByCompanyNumber(insuranceCompanyId: string, comp
     agentId: string;
     taxId: string;
 } | null>;
+export declare function getPartnersSplitPct(agentId: string): Promise<number>;
+export declare function setPartnersSplitPct(agentId: string, pct: number): Promise<void>;
 export declare function getAgentCompanyNumbers(agentId: string): Promise<AgentCompanyNumber[]>;
 export interface AgentCommissionRate {
     id: string;

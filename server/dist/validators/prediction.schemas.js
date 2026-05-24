@@ -1,6 +1,6 @@
 "use strict";
 Object.defineProperty(exports, "__esModule", { value: true });
-exports.monthlyPredictionQuerySchema = exports.dealPredictionBodySchema = void 0;
+exports.nextMonthForecastQuerySchema = exports.monthlyPredictionQuerySchema = exports.dealPredictionBodySchema = void 0;
 const zod_1 = require("zod");
 const productTypeEnum = zod_1.z.enum([
     'life_insurance',
@@ -23,5 +23,8 @@ exports.dealPredictionBodySchema = zod_1.z.object({
 exports.monthlyPredictionQuerySchema = zod_1.z.object({
     agentId: zod_1.z.string().uuid('agentId must be a valid UUID'),
     period: zod_1.z.string().regex(periodPattern, 'period must be YYYY-MM format'),
+});
+exports.nextMonthForecastQuerySchema = zod_1.z.object({
+    portfolioType: zod_1.z.enum(['personal', 'partners', 'all']).default('all'),
 });
 //# sourceMappingURL=prediction.schemas.js.map

@@ -13,6 +13,7 @@ import { predictionRouter } from './routes/prediction.routes.js';
 import { stripeRouter } from './routes/stripe.routes.js';
 import { ratesRouter } from './routes/rates.routes.js';
 import { advisorRouter } from './routes/advisor.routes.js';
+import { settingsRouter } from './routes/settings.routes.js';
 import { generateCommissionTemplate } from './services/commission-template.service.js';
 import { requireAuth } from './middleware/auth.middleware.js';
 import { errorHandler } from './middleware/errorHandler.js';
@@ -113,6 +114,7 @@ app.use('/api/v1/sales', requireAuth, salesRouter);
 app.use('/api/v1/predictions', requireAuth, predictionRouter);
 app.use('/api/v1/rates', requireAuth, ratesRouter);
 app.use('/api/v1/advisor', requireAuth, advisorRouter);
+app.use('/api/v1/settings', requireAuth, settingsRouter);
 
 app.use(errorHandler);
 

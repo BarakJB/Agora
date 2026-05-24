@@ -1,11 +1,14 @@
 import { Router } from 'express';
 import { predictDealImpact, predictMonthlySalary } from '../services/salary-prediction.service.js';
+import { predictNextMonthFromTransactions } from '../services/next-month-forecast.service.js';
 import { validate } from '../middleware/validate.js';
 import {
   dealPredictionBodySchema,
   monthlyPredictionQuerySchema,
+  nextMonthForecastQuerySchema,
   type DealPredictionBody,
   type MonthlyPredictionQuery,
+  type NextMonthForecastQuery,
 } from '../validators/prediction.schemas.js';
 
 export const predictionRouter = Router();
@@ -60,6 +63,28 @@ predictionRouter.get(
       }
 
       res.json({ data: prediction, error: null, meta: null });
+    } catch (err) {
+      next(err);
+    }
+  },
+);
+
+/**
+ * GET /api/v1/predictions/next-month?portfolioType=...
+ * Forecast next month commission based on actual sales_transactions history.
+ * Auth: required (agent_id from JWT).
+ */
+predictionRouter.get(
+  '/next-month',
+  validate({ query: nextMonthForecastQuerySchema }),
+  async (_req, res, next) => {
+    try {
+      const agentId = (res.locals.sub || res.locals.agentId) as string;
+      const { portfolioType } = res.locals.parsedQuery as NextMonthForecastQuery;
+
+      const forecast = await predictNextMonthFromTransactions(agentId, portfolioType);
+
+      res.json({ data: forecast, error: null, meta: null });
     } catch (err) {
       next(err);
     }

@@ -199,5 +199,45 @@ export declare function assignInsuranceCompany(agentId: string, insuredId: strin
     updated: number;
 }>;
 export declare function getActivePortfolioTypes(agentId: string): Promise<Array<'personal' | 'partners'>>;
+export interface ReportTypeSummary {
+    nifraim: number;
+    hekef: number;
+    accumulation: number;
+    total: number;
+}
+export declare function getSummaryByReportType(agentId: string, month: string, portfolioType?: PortfolioFilter, partnersSplitPct?: number): Promise<ReportTypeSummary>;
+export interface CompanyProductRow {
+    company: string;
+    branch: string;
+    product: string;
+    reportType: string;
+    total: number;
+    recordCount: number;
+}
+export interface ProductBreakdownItem {
+    branch: string;
+    product: string;
+    totalCommission: number;
+    pctOfCompany: number;
+    nifraimAmount: number;
+    hekefAmount: number;
+    accumulationAmount: number;
+}
+export interface CompanyBreakdownItem {
+    company: string;
+    totalCommission: number;
+    monthlyAverage: number;
+    pctOfTotal: number;
+    products: ProductBreakdownItem[];
+}
+export interface CompanyProductBreakdown {
+    companies: CompanyBreakdownItem[];
+    grandTotal: number;
+}
+export declare function getCompanyProductBreakdown(agentId: string, options?: {
+    fromMonth?: string;
+    toMonth?: string;
+    portfolioType?: PortfolioFilter;
+}): Promise<CompanyProductBreakdown>;
 export declare function getMonthlySalarySummary(agentId: string, portfolioType?: PortfolioFilter): Promise<MonthlySalarySummary[]>;
 //# sourceMappingURL=sales.repository.d.ts.map

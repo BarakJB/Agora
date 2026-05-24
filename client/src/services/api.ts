@@ -462,28 +462,6 @@ export type InsuranceCompanyCode =
   | 'psagot'
   | 'yashir';
 
-export const salesApi = {
-  getSalesPotential(portfolioType?: string) {
-    const qs = portfolioType && portfolioType !== 'all' ? `?portfolioType=${portfolioType}` : '';
-    return request<SalesPotentialData>(`/sales/potential${qs}`);
-  },
-
-  assignCompany(payload: {
-    insuredId?: string;
-    policyNumber?: string;
-    insuranceCompany: InsuranceCompanyCode;
-  }) {
-    return request<{ updated: number }>('/sales/assign-company', {
-      method: 'PATCH',
-      body: JSON.stringify(payload),
-    });
-  },
-
-  getPortfolioTypes() {
-    return request<{ types: Array<'personal' | 'partners'> }>('/sales/portfolio-types');
-  },
-};
-
 // ─── Agent Numbers ───────────────────────────────────────────
 export interface AgentNumber {
   insuranceCompanyId: string;
@@ -544,6 +522,123 @@ export const advisorApi = {
   deleteConversation(id: string) {
     return request<{ deleted: boolean }>(`/advisor/conversations/${encodeURIComponent(id)}`, {
       method: 'DELETE',
+    });
+  },
+};
+
+// ─── Sales Summary by Type ───────────────────────────────────
+export interface SalesTypeBreakdown {
+  nifraim: number;
+  hekef: number;
+  accumulation: number;
+  total: number;
+}
+
+export interface SalesSummaryByTypeResponse {
+  current: SalesTypeBreakdown;
+  previous?: SalesTypeBreakdown;
+  changePct?: {
+    nifraim: number;
+    hekef: number;
+    accumulation: number;
+    total: number;
+  };
+}
+
+export interface CompanyProductRow {
+  branch: string;
+  productName: string;
+  nifraim: number;
+  hekef: number;
+  accumulation: number;
+  total: number;
+  pctOfCompany: number;
+}
+
+export interface CompanyBreakdown {
+  company: string;
+  total: number;
+  pctOfGrand: number;
+  monthlyAvg: number;
+  products: CompanyProductRow[];
+}
+
+export interface CompanyProductBreakdownResponse {
+  companies: CompanyBreakdown[];
+  grandTotal: number;
+}
+
+export interface RevenueForecastBreakdown {
+  nifraim: number;
+  hekef: number;
+  accumulation: number;
+}
+
+export interface RevenueForecastResponse {
+  predictedTotal: number;
+  breakdown: RevenueForecastBreakdown;
+  confidence: 'high' | 'medium' | 'low';
+  basedOnMonths: number;
+  assumptions: string[];
+}
+
+export interface PartnersSplitResponse {
+  pct: number;
+}
+
+export const salesApi = {
+  getSalesPotential(portfolioType?: string) {
+    const qs = portfolioType && portfolioType !== 'all' ? `?portfolioType=${portfolioType}` : '';
+    return request<SalesPotentialData>(`/sales/potential${qs}`);
+  },
+
+  assignCompany(payload: {
+    insuredId?: string;
+    policyNumber?: string;
+    insuranceCompany: InsuranceCompanyCode;
+  }) {
+    return request<{ updated: number }>('/sales/assign-company', {
+      method: 'PATCH',
+      body: JSON.stringify(payload),
+    });
+  },
+
+  getPortfolioTypes() {
+    return request<{ types: Array<'personal' | 'partners'> }>('/sales/portfolio-types');
+  },
+
+  getSummaryByType(params: { month: string; portfolioType?: string; compareToPrevMonth?: boolean }) {
+    const qs = new URLSearchParams();
+    qs.set('month', params.month);
+    if (params.portfolioType && params.portfolioType !== 'all') qs.set('portfolioType', params.portfolioType);
+    if (params.compareToPrevMonth) qs.set('compareToPrevMonth', 'true');
+    return request<SalesSummaryByTypeResponse>(`/sales/summary-by-type?${qs.toString()}`);
+  },
+
+  getCompanyProductBreakdown(params: { fromMonth?: string; toMonth?: string; portfolioType?: string }) {
+    const qs = new URLSearchParams();
+    if (params.fromMonth) qs.set('fromMonth', params.fromMonth);
+    if (params.toMonth) qs.set('toMonth', params.toMonth);
+    if (params.portfolioType && params.portfolioType !== 'all') qs.set('portfolioType', params.portfolioType);
+    const query = qs.toString();
+    return request<CompanyProductBreakdownResponse>(`/sales/company-product-breakdown${query ? `?${query}` : ''}`);
+  },
+
+  getRevenueForecast(params?: { portfolioType?: string }) {
+    const qs = params?.portfolioType && params.portfolioType !== 'all' ? `?portfolioType=${params.portfolioType}` : '';
+    return request<RevenueForecastResponse>(`/predictions/next-month${qs}`);
+  },
+};
+
+export const settingsApi = {
+  getPartnersSplit() {
+    return request<PartnersSplitResponse>('/settings/partners-split');
+  },
+
+  setPartnersSplit(pct: number) {
+    return request<{ saved: boolean }>('/settings/partners-split', {
+      method: 'PUT',
+      body: JSON.stringify({ pct }),
     });
   },
 };

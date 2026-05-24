@@ -11,16 +11,23 @@ import {
   getContractCoverageSummary,
   assignInsuranceCompany,
   getActivePortfolioTypes,
+  getSummaryByReportType,
+  getCompanyProductBreakdown,
   type SalesTransactionInput,
   type PortfolioFilter,
 } from '../repositories/sales.repository.js';
+import { getPartnersSplitPct } from '../repositories/mysql.repository.js';
 import { getSalesPotential } from '../repositories/potential.repository.js';
 import { validate } from '../middleware/validate.js';
 import {
   contractCoverageQuerySchema,
   assignCompanySchema,
+  summaryByTypeQuerySchema,
+  companyProductQuerySchema,
   INSURANCE_COMPANY_MAP,
   type AssignCompanyBody,
+  type SummaryByTypeQuery,
+  type CompanyProductQuery,
 } from '../validators/sales.schemas.js';
 
 const portfolioTypeSchema = z
@@ -312,3 +319,82 @@ salesRouter.get('/client/:clientId', async (req, res, next) => {
     next(err);
   }
 });
+
+/**
+ * GET /api/v1/sales/summary-by-type?month=YYYY-MM&portfolioType=...&compareToPrevMonth=true
+ * Auth: required
+ * Returns commission breakdown by report type for a given month.
+ * If compareToPrevMonth=true, also returns previous month data and change percentages.
+ */
+salesRouter.get(
+  '/summary-by-type',
+  validate({ query: summaryByTypeQuerySchema }),
+  async (_req, res, next) => {
+    try {
+      const agentId = (res.locals.sub || res.locals.agentId) as string;
+      const { month, portfolioType, compareToPrevMonth } = res.locals.parsedQuery as SummaryByTypeQuery;
+
+      const splitPct = await getPartnersSplitPct(agentId);
+      const applySplit = portfolioType === 'all' ? splitPct : undefined;
+
+      const current = await getSummaryByReportType(agentId, month, portfolioType, applySplit);
+
+      if (!compareToPrevMonth) {
+        res.json({ data: { current }, error: null, meta: null });
+        return;
+      }
+
+      const [prevYear, prevMonthNum] = month.split('-').map(Number);
+      const prevDate = new Date(prevYear, prevMonthNum - 2, 1);
+      const prevMonth = `${prevDate.getFullYear()}-${String(prevDate.getMonth() + 1).padStart(2, '0')}`;
+
+      const previous = await getSummaryByReportType(agentId, prevMonth, portfolioType, applySplit);
+
+      function changePct(curr: number, prev: number): number | null {
+        if (prev === 0) return null;
+        return Math.round(((curr - prev) / prev) * 1000) / 10;
+      }
+
+      const changePctData = {
+        nifraim: changePct(current.nifraim, previous.nifraim),
+        hekef: changePct(current.hekef, previous.hekef),
+        accumulation: changePct(current.accumulation, previous.accumulation),
+        total: changePct(current.total, previous.total),
+      };
+
+      res.json({
+        data: { current, previous, changePct: changePctData },
+        error: null,
+        meta: { currentMonth: month, previousMonth: prevMonth },
+      });
+    } catch (err) {
+      next(err);
+    }
+  },
+);
+
+/**
+ * GET /api/v1/sales/company-product-breakdown?fromMonth&toMonth&portfolioType
+ * Auth: required
+ * Returns commission breakdown by insurance company and product.
+ */
+salesRouter.get(
+  '/company-product-breakdown',
+  validate({ query: companyProductQuerySchema }),
+  async (_req, res, next) => {
+    try {
+      const agentId = (res.locals.sub || res.locals.agentId) as string;
+      const { fromMonth, toMonth, portfolioType } = res.locals.parsedQuery as CompanyProductQuery;
+
+      const result = await getCompanyProductBreakdown(agentId, { fromMonth, toMonth, portfolioType });
+
+      res.json({
+        data: result,
+        error: null,
+        meta: { companyCount: result.companies.length },
+      });
+    } catch (err) {
+      next(err);
+    }
+  },
+);

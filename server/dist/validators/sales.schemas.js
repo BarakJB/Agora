@@ -1,9 +1,22 @@
 "use strict";
 Object.defineProperty(exports, "__esModule", { value: true });
-exports.assignCompanySchema = exports.INSURANCE_COMPANY_MAP = exports.contractCoverageQuerySchema = void 0;
+exports.assignCompanySchema = exports.INSURANCE_COMPANY_MAP = exports.contractCoverageQuerySchema = exports.companyProductQuerySchema = exports.summaryByTypeQuerySchema = void 0;
 const zod_1 = require("zod");
 const common_schemas_js_1 = require("./common.schemas.js");
 const monthPattern = /^\d{4}-(0[1-9]|1[0-2])$/;
+exports.summaryByTypeQuerySchema = zod_1.z.object({
+    month: zod_1.z.string().regex(monthPattern, 'month must be YYYY-MM format'),
+    portfolioType: zod_1.z.enum(['personal', 'partners', 'all']).default('all'),
+    compareToPrevMonth: zod_1.z
+        .enum(['true', 'false'])
+        .transform((v) => v === 'true')
+        .default('false'),
+});
+exports.companyProductQuerySchema = zod_1.z.object({
+    fromMonth: zod_1.z.string().regex(monthPattern, 'fromMonth must be YYYY-MM format').optional(),
+    toMonth: zod_1.z.string().regex(monthPattern, 'toMonth must be YYYY-MM format').optional(),
+    portfolioType: zod_1.z.enum(['personal', 'partners', 'all']).default('all'),
+});
 exports.contractCoverageQuerySchema = common_schemas_js_1.paginationQuerySchema.extend({
     month: zod_1.z
         .string()

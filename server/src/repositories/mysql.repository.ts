@@ -907,6 +907,25 @@ export async function getAgentByCompanyNumber(
   return { agentId: rows[0].agent_id as string, taxId: rows[0].tax_id as string };
 }
 
+// ─── Partners Split ─────────────────────────────────────────
+
+export async function getPartnersSplitPct(agentId: string): Promise<number> {
+  const [rows] = await pool.query<RowDataPacket[]>(
+    'SELECT partners_split_pct FROM agents WHERE id = ? AND deleted_at IS NULL LIMIT 1',
+    [agentId],
+  );
+  if (rows.length === 0) return 100;
+  return Number(rows[0].partners_split_pct) ?? 100;
+}
+
+export async function setPartnersSplitPct(agentId: string, pct: number): Promise<void> {
+  if (pct < 0 || pct > 100) throw new Error('partners_split_pct must be between 0 and 100');
+  await pool.query<ResultSetHeader>(
+    'UPDATE agents SET partners_split_pct = ? WHERE id = ? AND deleted_at IS NULL',
+    [pct, agentId],
+  );
+}
+
 export async function getAgentCompanyNumbers(agentId: string): Promise<AgentCompanyNumber[]> {
   const [rows] = await pool.query<RowDataPacket[]>(
     `SELECT acn.id, acn.agent_id, acn.insurance_company_id,

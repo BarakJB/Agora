@@ -28,6 +28,14 @@ export declare const monthlyPredictionQuerySchema: z.ZodObject<{
     agentId: string;
     period: string;
 }>;
+export declare const nextMonthForecastQuerySchema: z.ZodObject<{
+    portfolioType: z.ZodDefault<z.ZodEnum<["personal", "partners", "all"]>>;
+}, "strip", z.ZodTypeAny, {
+    portfolioType: "personal" | "partners" | "all";
+}, {
+    portfolioType?: "personal" | "partners" | "all" | undefined;
+}>;
 export type DealPredictionBody = z.infer<typeof dealPredictionBodySchema>;
 export type MonthlyPredictionQuery = z.infer<typeof monthlyPredictionQuerySchema>;
+export type NextMonthForecastQuery = z.infer<typeof nextMonthForecastQuerySchema>;
 //# sourceMappingURL=prediction.schemas.d.ts.map

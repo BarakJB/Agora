@@ -819,6 +819,250 @@ export async function getActivePortfolioTypes(
   return rows.map((r) => r.portfolio_type as 'personal' | 'partners');
 }
 
+// ─── Summary by Report Type ────────────────────────────────
+
+export interface ReportTypeSummary {
+  nifraim: number;
+  hekef: number;
+  accumulation: number;
+  total: number;
+}
+
+export async function getSummaryByReportType(
+  agentId: string,
+  month: string,
+  portfolioType?: PortfolioFilter,
+  partnersSplitPct?: number,
+): Promise<ReportTypeSummary> {
+  const params: unknown[] = [agentId, month];
+  let filter = '';
+  if (portfolioType && portfolioType !== 'all') {
+    filter = ' AND portfolio_type = ?';
+    params.push(portfolioType);
+  }
+
+  const [rows] = await pool.query<RowDataPacket[]>(
+    `SELECT report_type, ROUND(SUM(commission_amount), 2) AS total
+     FROM sales_transactions
+     WHERE agent_id = ? AND processing_month = ?${filter}
+     GROUP BY report_type`,
+    params,
+  );
+
+  let nifraim = 0;
+  let hekef = 0;
+  let accumulation = 0;
+
+  for (const r of rows) {
+    const amount = Number(r.total);
+    const rt = r.report_type as string;
+    if (rt === 'nifraim') nifraim += amount;
+    else if (rt === 'hekef') hekef += amount;
+    else if (rt.startsWith('accumulation')) accumulation += amount;
+  }
+
+  if (partnersSplitPct !== undefined && portfolioType === 'all') {
+    const splitFactor = partnersSplitPct / 100;
+    const [partnerRows] = await pool.query<RowDataPacket[]>(
+      `SELECT report_type, ROUND(SUM(commission_amount), 2) AS total
+       FROM sales_transactions
+       WHERE agent_id = ? AND processing_month = ? AND portfolio_type = 'partners'
+       GROUP BY report_type`,
+      [agentId, month],
+    );
+
+    let partnerNifraim = 0;
+    let partnerHekef = 0;
+    let partnerAccumulation = 0;
+    for (const r of partnerRows) {
+      const amount = Number(r.total);
+      const rt = r.report_type as string;
+      if (rt === 'nifraim') partnerNifraim += amount;
+      else if (rt === 'hekef') partnerHekef += amount;
+      else if (rt.startsWith('accumulation')) partnerAccumulation += amount;
+    }
+
+    nifraim = nifraim - partnerNifraim + partnerNifraim * splitFactor;
+    hekef = hekef - partnerHekef + partnerHekef * splitFactor;
+    accumulation = accumulation - partnerAccumulation + partnerAccumulation * splitFactor;
+  }
+
+  const total = Math.round((nifraim + hekef + accumulation) * 100) / 100;
+  return {
+    nifraim: Math.round(nifraim * 100) / 100,
+    hekef: Math.round(hekef * 100) / 100,
+    accumulation: Math.round(accumulation * 100) / 100,
+    total,
+  };
+}
+
+// ─── Company × Product Breakdown ───────────────────────────
+
+export interface CompanyProductRow {
+  company: string;
+  branch: string;
+  product: string;
+  reportType: string;
+  total: number;
+  recordCount: number;
+}
+
+export interface ProductBreakdownItem {
+  branch: string;
+  product: string;
+  totalCommission: number;
+  pctOfCompany: number;
+  nifraimAmount: number;
+  hekefAmount: number;
+  accumulationAmount: number;
+}
+
+export interface CompanyBreakdownItem {
+  company: string;
+  totalCommission: number;
+  monthlyAverage: number;
+  pctOfTotal: number;
+  products: ProductBreakdownItem[];
+}
+
+export interface CompanyProductBreakdown {
+  companies: CompanyBreakdownItem[];
+  grandTotal: number;
+}
+
+export async function getCompanyProductBreakdown(
+  agentId: string,
+  options: { fromMonth?: string; toMonth?: string; portfolioType?: PortfolioFilter } = {},
+): Promise<CompanyProductBreakdown> {
+  const { fromMonth, toMonth, portfolioType } = options;
+  const params: unknown[] = [agentId];
+  const filters: string[] = [];
+
+  if (fromMonth) {
+    filters.push('processing_month >= ?');
+    params.push(fromMonth);
+  }
+  if (toMonth) {
+    filters.push('processing_month <= ?');
+    params.push(toMonth);
+  }
+  if (portfolioType && portfolioType !== 'all') {
+    filters.push('portfolio_type = ?');
+    params.push(portfolioType);
+  }
+
+  const whereExtra = filters.length > 0 ? ' AND ' + filters.join(' AND ') : '';
+
+  const [rawRows] = await pool.query<RowDataPacket[]>(
+    `SELECT insurance_company AS company,
+            COALESCE(branch, '—') AS branch,
+            COALESCE(product_name, '—') AS product,
+            report_type,
+            ROUND(SUM(commission_amount), 2) AS total,
+            COUNT(*) AS record_count
+     FROM sales_transactions
+     WHERE agent_id = ?${whereExtra}
+     GROUP BY insurance_company, branch, product_name, report_type
+     ORDER BY insurance_company, branch, product_name`,
+    params,
+  );
+
+  let distinctMonths = 1;
+  if (fromMonth && toMonth) {
+    const [fy, fm] = fromMonth.split('-').map(Number);
+    const [ty, tm] = toMonth.split('-').map(Number);
+    distinctMonths = Math.max(1, (ty - fy) * 12 + tm - fm + 1);
+  } else {
+    const [countRows] = await pool.query<RowDataPacket[]>(
+      `SELECT COUNT(DISTINCT processing_month) AS cnt
+       FROM sales_transactions
+       WHERE agent_id = ?${whereExtra}`,
+      params,
+    );
+    distinctMonths = Math.max(1, Number(countRows[0]?.cnt) || 1);
+  }
+
+  type ProductKey = string;
+  type CompanyKey = string;
+
+  const companyMap = new Map<CompanyKey, Map<ProductKey, {
+    branch: string;
+    product: string;
+    nifraim: number;
+    hekef: number;
+    accumulation: number;
+    other: number;
+  }>>();
+
+  for (const r of rawRows) {
+    const company = r.company as string;
+    const branch = r.branch as string;
+    const product = r.product as string;
+    const reportType = r.report_type as string;
+    const amount = Number(r.total);
+    const key = `${branch}||${product}`;
+
+    if (!companyMap.has(company)) companyMap.set(company, new Map());
+    const products = companyMap.get(company)!;
+
+    if (!products.has(key)) {
+      products.set(key, { branch, product, nifraim: 0, hekef: 0, accumulation: 0, other: 0 });
+    }
+    const entry = products.get(key)!;
+
+    if (reportType === 'nifraim') entry.nifraim += amount;
+    else if (reportType === 'hekef') entry.hekef += amount;
+    else if (reportType.startsWith('accumulation')) entry.accumulation += amount;
+    else entry.other += amount;
+  }
+
+  const companies: CompanyBreakdownItem[] = [];
+  let grandTotal = 0;
+
+  for (const [company, productMap] of companyMap) {
+    let companyTotal = 0;
+    const products: ProductBreakdownItem[] = [];
+
+    for (const entry of productMap.values()) {
+      const productTotal = Math.round((entry.nifraim + entry.hekef + entry.accumulation + entry.other) * 100) / 100;
+      companyTotal += productTotal;
+      products.push({
+        branch: entry.branch,
+        product: entry.product,
+        totalCommission: productTotal,
+        pctOfCompany: 0,
+        nifraimAmount: Math.round(entry.nifraim * 100) / 100,
+        hekefAmount: Math.round(entry.hekef * 100) / 100,
+        accumulationAmount: Math.round(entry.accumulation * 100) / 100,
+      });
+    }
+
+    companyTotal = Math.round(companyTotal * 100) / 100;
+    grandTotal += companyTotal;
+
+    for (const p of products) {
+      p.pctOfCompany = companyTotal > 0 ? Math.round((p.totalCommission / companyTotal) * 1000) / 10 : 0;
+    }
+    products.sort((a, b) => b.totalCommission - a.totalCommission);
+
+    companies.push({
+      company,
+      totalCommission: companyTotal,
+      monthlyAverage: Math.round((companyTotal / distinctMonths) * 100) / 100,
+      pctOfTotal: 0,
+      products,
+    });
+  }
+
+  grandTotal = Math.round(grandTotal * 100) / 100;
+  for (const c of companies) {
+    c.pctOfTotal = grandTotal > 0 ? Math.round((c.totalCommission / grandTotal) * 1000) / 10 : 0;
+  }
+  companies.sort((a, b) => b.totalCommission - a.totalCommission);
+
+  return { companies, grandTotal };
+}
+
 export async function getMonthlySalarySummary(
   agentId: string,
   portfolioType: PortfolioFilter = 'all',

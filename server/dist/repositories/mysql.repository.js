@@ -46,6 +46,8 @@ exports.getAgentNumbersByCompany = getAgentNumbersByCompany;
 exports.getAgentCompanyNumbersWithPortfolio = getAgentCompanyNumbersWithPortfolio;
 exports.resolvePortfolioByAgentNumber = resolvePortfolioByAgentNumber;
 exports.getAgentByCompanyNumber = getAgentByCompanyNumber;
+exports.getPartnersSplitPct = getPartnersSplitPct;
+exports.setPartnersSplitPct = setPartnersSplitPct;
 exports.getAgentCompanyNumbers = getAgentCompanyNumbers;
 exports.getAgentCommissionRates = getAgentCommissionRates;
 exports.upsertAgentCommissionRates = upsertAgentCommissionRates;
@@ -570,6 +572,18 @@ async function getAgentByCompanyNumber(insuranceCompanyId, companyAgentNumber) {
     if (rows.length === 0)
         return null;
     return { agentId: rows[0].agent_id, taxId: rows[0].tax_id };
+}
+// ─── Partners Split ─────────────────────────────────────────
+async function getPartnersSplitPct(agentId) {
+    const [rows] = await database_js_1.default.query('SELECT partners_split_pct FROM agents WHERE id = ? AND deleted_at IS NULL LIMIT 1', [agentId]);
+    if (rows.length === 0)
+        return 100;
+    return Number(rows[0].partners_split_pct) ?? 100;
+}
+async function setPartnersSplitPct(agentId, pct) {
+    if (pct < 0 || pct > 100)
+        throw new Error('partners_split_pct must be between 0 and 100');
+    await database_js_1.default.query('UPDATE agents SET partners_split_pct = ? WHERE id = ? AND deleted_at IS NULL', [pct, agentId]);
 }
 async function getAgentCompanyNumbers(agentId) {
     const [rows] = await database_js_1.default.query(`SELECT acn.id, acn.agent_id, acn.insurance_company_id,

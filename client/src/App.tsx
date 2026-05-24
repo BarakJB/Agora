@@ -19,6 +19,7 @@ const ClientRankingPage = lazy(() => import('./pages/ClientRankingPage'));
 const AnomaliesPage = lazy(() => import('./pages/AnomaliesPage'));
 const ContractCoveragePage = lazy(() => import('./pages/ContractCoveragePage'));
 const SalesPotentialPage = lazy(() => import('./pages/SalesPotentialPage'));
+const CompanyProductBreakdownPage = lazy(() => import('./pages/CompanyProductBreakdownPage'));
 
 function LoadingSpinner() {
   return (
@@ -134,6 +135,7 @@ export default function App() {
             <Route path="anomalies" element={<AnomaliesPage />} />
             <Route path="portfolio/contract-coverage" element={<ContractCoveragePage />} />
             <Route path="potential" element={<SalesPotentialPage />} />
+            <Route path="breakdown" element={<CompanyProductBreakdownPage />} />
           </Route>
         </Routes>
       </Suspense>

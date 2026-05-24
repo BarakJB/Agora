@@ -5,6 +5,7 @@ import { useAuthStore } from '../store/authStore';
 import { useDataStore } from '../store/dataStore';
 import CommissionRatesEditor from '../components/CommissionRatesEditor';
 import * as api from '../services/api';
+import { settingsApi } from '../services/api';
 
 const links = [
   { icon: 'download', title: 'לוח עמלות סוכנים - הראל ביטוח (PDF)', desc: 'עודכן לאחרונה: 01/01/2026' },
@@ -59,6 +60,52 @@ export default function SettingsPage() {
 
   const [agentNumbers, setAgentNumbers] = useState<AgentNumbersMap>(buildInitialMap);
   const [agentNumbersLoading, setAgentNumbersLoading] = useState(false);
+
+  const [partnersSplitPct, setPartnersSplitPct] = useState<number>(50);
+  const [partnersSplitSaving, setPartnersSplitSaving] = useState(false);
+  const [partnersSplitSaved, setPartnersSplitSaved] = useState(false);
+  const [partnersSplitError, setPartnersSplitError] = useState<string | null>(null);
+  const [hasPartnersPortfolio, setHasPartnersPortfolio] = useState(false);
+
+  useEffect(() => {
+    let cancelled = false;
+    async function loadPartnersSplit() {
+      try {
+        const [splitRes, typesRes] = await Promise.all([
+          settingsApi.getPartnersSplit(),
+          api.salesApi.getPortfolioTypes(),
+        ]);
+        if (!cancelled) {
+          if (splitRes.data) setPartnersSplitPct(splitRes.data.pct);
+          const types = typesRes.data?.types ?? [];
+          setHasPartnersPortfolio(types.includes('partners'));
+        }
+      } catch {
+        // non-critical
+      }
+    }
+    loadPartnersSplit();
+    return () => { cancelled = true; };
+  }, []);
+
+  async function handleSavePartnersSplit() {
+    if (partnersSplitPct < 0 || partnersSplitPct > 100) {
+      setPartnersSplitError('ערך חייב להיות בין 0 ל-100');
+      return;
+    }
+    setPartnersSplitSaving(true);
+    setPartnersSplitError(null);
+    try {
+      await settingsApi.setPartnersSplit(partnersSplitPct);
+      setPartnersSplitSaved(true);
+      setTimeout(() => setPartnersSplitSaved(false), 2500);
+    } catch (err) {
+      const msg = err instanceof api.ApiError ? (err.serverError ?? 'שגיאה בשמירה') : 'שגיאה בשמירה';
+      setPartnersSplitError(msg);
+    } finally {
+      setPartnersSplitSaving(false);
+    }
+  }
 
   useEffect(() => {
     let cancelled = false;
@@ -392,6 +439,71 @@ export default function SettingsPage() {
             )}
           </section>
         </div>
+
+        {/* Partners Split — shown only if agent has a partners portfolio */}
+        {hasPartnersPortfolio && (
+          <div className="mt-8">
+            <section className="bg-surface-container-lowest rounded-lg shadow-editorial p-8">
+              <div className="flex items-center gap-3 mb-2">
+                <Icon name="group" className="text-primary" />
+                <h3 className="text-xl font-bold font-headline text-primary">חלוקת תיק שותפים</h3>
+              </div>
+              <p className="text-sm text-on-surface-variant mb-6">
+                סכומים מתיק שותפים יוכפלו באחוז זה כשמציגים &quot;שלי בפועל&quot;
+              </p>
+              <div className="flex items-end gap-4 flex-wrap">
+                <div className="flex flex-col gap-1.5">
+                  <label
+                    htmlFor="partners-split-input"
+                    className="text-sm font-semibold text-on-surface"
+                  >
+                    האחוז שלי בתיק שותפים
+                  </label>
+                  <div className="flex items-center gap-2">
+                    <input
+                      id="partners-split-input"
+                      type="number"
+                      min={0}
+                      max={100}
+                      step={1}
+                      value={partnersSplitPct}
+                      onChange={(e) => {
+                        setPartnersSplitPct(Number(e.target.value));
+                        setPartnersSplitError(null);
+                        setPartnersSplitSaved(false);
+                      }}
+                      aria-label="אחוז חלוקת תיק שותפים"
+                      className="w-24 bg-surface border border-outline-variant/40 rounded-lg px-3 py-2 text-sm font-mono text-end focus:outline-none focus:ring-2 focus:ring-primary/40 focus:border-primary"
+                    />
+                    <span className="text-sm font-bold text-on-surface-variant">%</span>
+                  </div>
+                  {partnersSplitError && (
+                    <p className="text-xs text-error">{partnersSplitError}</p>
+                  )}
+                </div>
+                <button
+                  onClick={handleSavePartnersSplit}
+                  disabled={partnersSplitSaving}
+                  aria-label="שמור חלוקת תיק שותפים"
+                  className="px-6 py-2.5 bg-secondary text-on-secondary rounded-lg text-sm font-bold hover:opacity-90 disabled:opacity-50 transition-opacity flex items-center gap-2"
+                >
+                  {partnersSplitSaving ? (
+                    <div className="w-4 h-4 rounded-full border-2 border-on-secondary/30 border-t-on-secondary animate-spin" />
+                  ) : (
+                    <Icon name="save" size="sm" />
+                  )}
+                  שמור
+                </button>
+                {partnersSplitSaved && (
+                  <div className="flex items-center gap-1.5 text-secondary text-sm font-semibold">
+                    <Icon name="check_circle" size="sm" />
+                    נשמר
+                  </div>
+                )}
+              </div>
+            </section>
+          </div>
+        )}
 
         {/* Commission Rates Editor */}
         <div className="grid grid-cols-12 gap-8 mt-8">

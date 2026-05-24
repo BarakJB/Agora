@@ -4,6 +4,7 @@ exports.salesRouter = void 0;
 const express_1 = require("express");
 const zod_1 = require("zod");
 const sales_repository_js_1 = require("../repositories/sales.repository.js");
+const mysql_repository_js_1 = require("../repositories/mysql.repository.js");
 const potential_repository_js_1 = require("../repositories/potential.repository.js");
 const validate_js_1 = require("../middleware/validate.js");
 const sales_schemas_js_1 = require("../validators/sales.schemas.js");
@@ -251,6 +252,68 @@ exports.salesRouter.get('/client/:clientId', async (req, res, next) => {
             data: transactions,
             error: null,
             meta: { count: transactions.length },
+        });
+    }
+    catch (err) {
+        next(err);
+    }
+});
+/**
+ * GET /api/v1/sales/summary-by-type?month=YYYY-MM&portfolioType=...&compareToPrevMonth=true
+ * Auth: required
+ * Returns commission breakdown by report type for a given month.
+ * If compareToPrevMonth=true, also returns previous month data and change percentages.
+ */
+exports.salesRouter.get('/summary-by-type', (0, validate_js_1.validate)({ query: sales_schemas_js_1.summaryByTypeQuerySchema }), async (_req, res, next) => {
+    try {
+        const agentId = (res.locals.sub || res.locals.agentId);
+        const { month, portfolioType, compareToPrevMonth } = res.locals.parsedQuery;
+        const splitPct = await (0, mysql_repository_js_1.getPartnersSplitPct)(agentId);
+        const applySplit = portfolioType === 'all' ? splitPct : undefined;
+        const current = await (0, sales_repository_js_1.getSummaryByReportType)(agentId, month, portfolioType, applySplit);
+        if (!compareToPrevMonth) {
+            res.json({ data: { current }, error: null, meta: null });
+            return;
+        }
+        const [prevYear, prevMonthNum] = month.split('-').map(Number);
+        const prevDate = new Date(prevYear, prevMonthNum - 2, 1);
+        const prevMonth = `${prevDate.getFullYear()}-${String(prevDate.getMonth() + 1).padStart(2, '0')}`;
+        const previous = await (0, sales_repository_js_1.getSummaryByReportType)(agentId, prevMonth, portfolioType, applySplit);
+        function changePct(curr, prev) {
+            if (prev === 0)
+                return null;
+            return Math.round(((curr - prev) / prev) * 1000) / 10;
+        }
+        const changePctData = {
+            nifraim: changePct(current.nifraim, previous.nifraim),
+            hekef: changePct(current.hekef, previous.hekef),
+            accumulation: changePct(current.accumulation, previous.accumulation),
+            total: changePct(current.total, previous.total),
+        };
+        res.json({
+            data: { current, previous, changePct: changePctData },
+            error: null,
+            meta: { currentMonth: month, previousMonth: prevMonth },
+        });
+    }
+    catch (err) {
+        next(err);
+    }
+});
+/**
+ * GET /api/v1/sales/company-product-breakdown?fromMonth&toMonth&portfolioType
+ * Auth: required
+ * Returns commission breakdown by insurance company and product.
+ */
+exports.salesRouter.get('/company-product-breakdown', (0, validate_js_1.validate)({ query: sales_schemas_js_1.companyProductQuerySchema }), async (_req, res, next) => {
+    try {
+        const agentId = (res.locals.sub || res.locals.agentId);
+        const { fromMonth, toMonth, portfolioType } = res.locals.parsedQuery;
+        const result = await (0, sales_repository_js_1.getCompanyProductBreakdown)(agentId, { fromMonth, toMonth, portfolioType });
+        res.json({
+            data: result,
+            error: null,
+            meta: { companyCount: result.companies.length },
         });
     }
     catch (err) {
