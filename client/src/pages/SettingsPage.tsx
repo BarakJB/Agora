@@ -3,6 +3,7 @@ import Icon from '../components/ui/Icon';
 import CompanyLogo from '../components/common/CompanyLogo';
 import { useAuthStore } from '../store/authStore';
 import { useDataStore } from '../store/dataStore';
+import { usePortfolioFilterStore } from '../store/portfolioFilterStore';
 import CommissionRatesEditor from '../components/CommissionRatesEditor';
 import * as api from '../services/api';
 
@@ -50,6 +51,7 @@ function buildInitialMap(): AgentNumbersMap {
 export default function SettingsPage() {
   const profile = useAuthStore((s) => s.profile);
   const dashboard = useDataStore((s) => s.dashboard);
+  const checkMultiplePortfolios = usePortfolioFilterStore((s) => s.checkMultiplePortfolios);
   const displayName = profile?.name || 'משתמש חדש';
   const displayRole = profile?.role || 'סוכן';
   const displayLicense = profile?.licenseNumber || '---';
@@ -133,6 +135,7 @@ export default function SettingsPage() {
       return;
     }
     setFieldState(companyId, pt, { saving: false });
+    await checkMultiplePortfolios();
   }
 
   async function handleDelete(companyId: string, pt: PortfolioType) {
@@ -140,10 +143,19 @@ export default function SettingsPage() {
     try {
       await api.deleteAgentNumber({ insuranceCompanyId: companyId, portfolioType: pt });
       setFieldState(companyId, pt, { deleting: false, value: '' });
+      await checkMultiplePortfolios();
     } catch (err) {
       const msg = err instanceof api.ApiError ? (err.serverError ?? 'שגיאה במחיקה') : 'שגיאה במחיקה';
       setFieldState(companyId, pt, { deleting: false, error: msg });
     }
+  }
+
+  function companyHasOnlyOnePortfolio(companyId: string): boolean {
+    const fields = agentNumbers[companyId];
+    if (!fields) return false;
+    const hasPersonal = !!fields.personal.value.trim();
+    const hasPartners = !!fields.partners.value.trim();
+    return hasPersonal !== hasPartners;
   }
 
   return (
@@ -371,6 +383,12 @@ export default function SettingsPage() {
                           );
                         })}
                       </div>
+                      {companyHasOnlyOnePortfolio(company.id) && (
+                        <p className="mt-3 text-xs text-on-surface-variant flex items-center gap-1.5">
+                          <Icon name="info" size="sm" className="text-secondary opacity-70" />
+                          להפעלת הפרדה בין תיק אישי לשותפים, הוסף גם את המספר השני
+                        </p>
+                      )}
                     </div>
                   );
                 })}

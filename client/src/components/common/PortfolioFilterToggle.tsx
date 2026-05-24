@@ -14,6 +14,9 @@ const OPTIONS: { value: PortfolioFilter; label: string }[] = [
 export default function PortfolioFilterToggle({ value: propValue, onChange: propOnChange }: PortfolioFilterToggleProps) {
   const storeFilter = usePortfolioFilterStore((s) => s.portfolioFilter);
   const setStoreFilter = usePortfolioFilterStore((s) => s.setPortfolioFilter);
+  const hasMultiplePortfolios = usePortfolioFilterStore((s) => s.hasMultiplePortfolios);
+
+  if (!hasMultiplePortfolios) return null;
 
   const value = propValue ?? storeFilter;
   const onChange = propOnChange ?? setStoreFilter;
