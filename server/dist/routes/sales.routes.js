@@ -2,10 +2,18 @@
 Object.defineProperty(exports, "__esModule", { value: true });
 exports.salesRouter = void 0;
 const express_1 = require("express");
+const zod_1 = require("zod");
 const sales_repository_js_1 = require("../repositories/sales.repository.js");
 const potential_repository_js_1 = require("../repositories/potential.repository.js");
 const validate_js_1 = require("../middleware/validate.js");
 const sales_schemas_js_1 = require("../validators/sales.schemas.js");
+const portfolioTypeSchema = zod_1.z
+    .enum(['personal', 'partners', 'all'])
+    .default('all');
+function parsePortfolioType(raw) {
+    const result = portfolioTypeSchema.safeParse(raw);
+    return result.success ? result.data : 'all';
+}
 exports.salesRouter = (0, express_1.Router)();
 /**
  * POST /api/v1/sales
@@ -65,7 +73,8 @@ exports.salesRouter.get('/', async (req, res, next) => {
     try {
         const agentId = (res.locals.sub || res.locals.agentId);
         const month = req.query.month;
-        const transactions = await (0, sales_repository_js_1.getSalesTransactions)(agentId, month);
+        const portfolioType = parsePortfolioType(req.query.portfolioType);
+        const transactions = await (0, sales_repository_js_1.getSalesTransactions)(agentId, month, portfolioType);
         res.json({
             data: transactions,
             error: null,
@@ -84,7 +93,8 @@ exports.salesRouter.get('/', async (req, res, next) => {
 exports.salesRouter.get('/summary', async (req, res, next) => {
     try {
         const agentId = (res.locals.sub || res.locals.agentId);
-        const summary = await (0, sales_repository_js_1.getMonthlySalarySummary)(agentId);
+        const portfolioType = parsePortfolioType(req.query.portfolioType);
+        const summary = await (0, sales_repository_js_1.getMonthlySalarySummary)(agentId, portfolioType);
         res.json({
             data: summary,
             error: null,
@@ -103,7 +113,8 @@ exports.salesRouter.get('/summary', async (req, res, next) => {
 exports.salesRouter.get('/portfolio', async (req, res, next) => {
     try {
         const agentId = (res.locals.sub || res.locals.agentId);
-        const analysis = await (0, sales_repository_js_1.getPortfolioAnalysis)(agentId);
+        const portfolioType = parsePortfolioType(req.query.portfolioType);
+        const analysis = await (0, sales_repository_js_1.getPortfolioAnalysis)(agentId, portfolioType);
         res.json({
             data: analysis,
             error: null,
@@ -123,7 +134,8 @@ exports.salesRouter.get('/clients', async (req, res, next) => {
     try {
         const agentId = (res.locals.sub || res.locals.agentId);
         const search = req.query.search;
-        const clients = await (0, sales_repository_js_1.searchClients)(agentId, search);
+        const portfolioType = parsePortfolioType(req.query.portfolioType);
+        const clients = await (0, sales_repository_js_1.searchClients)(agentId, search, 50, portfolioType);
         res.json({
             data: clients,
             error: null,
@@ -142,12 +154,12 @@ exports.salesRouter.get('/clients', async (req, res, next) => {
 exports.salesRouter.get('/contract-coverage', (0, validate_js_1.validate)({ query: sales_schemas_js_1.contractCoverageQuerySchema }), async (req, res, next) => {
     try {
         const agentId = (res.locals.sub || res.locals.agentId);
-        const { month, detailed, limit, page } = res.locals.parsedQuery;
+        const { month, detailed, limit, page, portfolioType } = res.locals.parsedQuery;
         const offset = (page - 1) * limit;
         const [summary, transactions] = await Promise.all([
-            (0, sales_repository_js_1.getContractCoverageSummary)(agentId, { month }),
+            (0, sales_repository_js_1.getContractCoverageSummary)(agentId, { month, portfolioType }),
             detailed
-                ? (0, sales_repository_js_1.getSalesWithContractStatus)(agentId, { month, limit, offset })
+                ? (0, sales_repository_js_1.getSalesWithContractStatus)(agentId, { month, limit, offset, portfolioType })
                 : Promise.resolve(undefined),
         ]);
         res.json({
@@ -174,7 +186,8 @@ exports.salesRouter.get('/contract-coverage', (0, validate_js_1.validate)({ quer
 exports.salesRouter.get('/potential', async (req, res, next) => {
     try {
         const agentId = (res.locals.sub || res.locals.agentId);
-        const result = await (0, potential_repository_js_1.getSalesPotential)(agentId);
+        const portfolioType = parsePortfolioType(req.query.portfolioType);
+        const result = await (0, potential_repository_js_1.getSalesPotential)(agentId, portfolioType);
         res.json({
             data: result,
             error: null,

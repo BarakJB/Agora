@@ -1,4 +1,5 @@
 export type ExcelReportType = 'nifraim' | 'hekef' | 'accumulation_nifraim' | 'accumulation_hekef' | 'branch_distribution' | 'agent_data' | 'product_distribution';
+export type RecordPortfolioType = 'personal' | 'partners' | 'unknown';
 export interface ParsedCommissionRecord {
     id: string;
     reportType: ExcelReportType;
@@ -32,6 +33,7 @@ export interface ParsedCommissionRecord {
     paymentAmount: number | null;
     contractNumber: string | null;
     rawRow: Record<string, unknown>;
+    portfolioType?: RecordPortfolioType;
 }
 export interface ParseResult {
     reportType: ExcelReportType;

@@ -294,13 +294,17 @@ export function saveSalesTransactions(records: SalesTransactionInput[], insuranc
   });
 }
 
-export function getSalesTransactions(month?: string) {
-  const qs = month ? `?month=${encodeURIComponent(month)}` : '';
-  return request<SalesTransaction[]>(`/sales${qs}`);
+export function getSalesTransactions(month?: string, portfolioType?: string) {
+  const qs = new URLSearchParams();
+  if (month) qs.set('month', month);
+  if (portfolioType && portfolioType !== 'all') qs.set('portfolioType', portfolioType);
+  const query = qs.toString();
+  return request<SalesTransaction[]>(`/sales${query ? `?${query}` : ''}`);
 }
 
-export function getSalesSummary() {
-  return request<MonthlySalarySummary[]>('/sales/summary');
+export function getSalesSummary(portfolioType?: string) {
+  const qs = portfolioType && portfolioType !== 'all' ? `?portfolioType=${portfolioType}` : '';
+  return request<MonthlySalarySummary[]>(`/sales/summary${qs}`);
 }
 
 // ─── Portfolio Analysis ─────────────────────────────────────
@@ -364,8 +368,9 @@ export interface PortfolioAnalysis {
   newClients: PortfolioNewClient[];
 }
 
-export function getPortfolioAnalysis() {
-  return request<PortfolioAnalysis>('/sales/portfolio');
+export function getPortfolioAnalysis(portfolioType?: string) {
+  const qs = portfolioType && portfolioType !== 'all' ? `?portfolioType=${portfolioType}` : '';
+  return request<PortfolioAnalysis>(`/sales/portfolio${qs}`);
 }
 
 // ─── Client Search ──────────────────────────────────────────
@@ -393,28 +398,36 @@ export interface ClientTransaction {
   reportType: string;
 }
 
-export function searchClients(search?: string) {
-  const qs = search ? `?search=${encodeURIComponent(search)}` : '';
-  return request<ClientSummary[]>(`/sales/clients${qs}`);
+export function searchClients(search?: string, portfolioType?: string) {
+  const qs = new URLSearchParams();
+  if (search) qs.set('search', search);
+  if (portfolioType && portfolioType !== 'all') qs.set('portfolioType', portfolioType);
+  const query = qs.toString();
+  return request<ClientSummary[]>(`/sales/clients${query ? `?${query}` : ''}`);
 }
 
-export function getClientTransactions(clientId: string) {
-  return request<ClientTransaction[]>(`/sales/client/${encodeURIComponent(clientId)}`);
+export function getClientTransactions(clientId: string, portfolioType?: string) {
+  const qs = portfolioType && portfolioType !== 'all' ? `?portfolioType=${portfolioType}` : '';
+  return request<ClientTransaction[]>(`/sales/client/${encodeURIComponent(clientId)}${qs}`);
 }
 
 // ─── Contract Coverage ──────────────────────────────────────
 import type { ContractCoverageResponse } from '../types/contract-coverage';
 
-export function getContractCoverageSummary(month?: string) {
-  const qs = month ? `?month=${encodeURIComponent(month)}` : '';
-  return request<ContractCoverageResponse>(`/sales/contract-coverage${qs}`);
+export function getContractCoverageSummary(month?: string, portfolioType?: string) {
+  const qs = new URLSearchParams();
+  if (month) qs.set('month', month);
+  if (portfolioType && portfolioType !== 'all') qs.set('portfolioType', portfolioType);
+  const query = qs.toString();
+  return request<ContractCoverageResponse>(`/sales/contract-coverage${query ? `?${query}` : ''}`);
 }
 
-export function getContractCoverageDetailed(month?: string) {
-  const base = month
-    ? `?month=${encodeURIComponent(month)}&detailed=true`
-    : '?detailed=true';
-  return request<ContractCoverageResponse>(`/sales/contract-coverage${base}`);
+export function getContractCoverageDetailed(month?: string, portfolioType?: string) {
+  const qs = new URLSearchParams();
+  qs.set('detailed', 'true');
+  if (month) qs.set('month', month);
+  if (portfolioType && portfolioType !== 'all') qs.set('portfolioType', portfolioType);
+  return request<ContractCoverageResponse>(`/sales/contract-coverage?${qs.toString()}`);
 }
 
 // ─── Sales Potential ─────────────────────────────────────────
@@ -434,8 +447,9 @@ export type InsuranceCompanyCode =
   | 'yashir';
 
 export const salesApi = {
-  getSalesPotential() {
-    return request<SalesPotentialData>('/sales/potential');
+  getSalesPotential(portfolioType?: string) {
+    const qs = portfolioType && portfolioType !== 'all' ? `?portfolioType=${portfolioType}` : '';
+    return request<SalesPotentialData>(`/sales/potential${qs}`);
   },
 
   assignCompany(payload: {
@@ -449,6 +463,39 @@ export const salesApi = {
     });
   },
 };
+
+// ─── Agent Numbers ───────────────────────────────────────────
+export interface AgentNumber {
+  insuranceCompanyId: string;
+  insuranceCompanyName: string;
+  companyAgentNumber: string;
+  portfolioType: 'personal' | 'partners';
+}
+
+export function getAgentNumbers() {
+  return request<AgentNumber[]>('/uploads/agent-numbers');
+}
+
+export function upsertAgentNumber(payload: {
+  insuranceCompanyId: string;
+  companyAgentNumber: string;
+  portfolioType: 'personal' | 'partners';
+}) {
+  return request<{ upserted: boolean }>('/uploads/agent-numbers', {
+    method: 'POST',
+    body: JSON.stringify(payload),
+  });
+}
+
+export function deleteAgentNumber(payload: {
+  insuranceCompanyId: string;
+  portfolioType: 'personal' | 'partners';
+}) {
+  return request<{ deleted: boolean }>('/uploads/agent-numbers', {
+    method: 'DELETE',
+    body: JSON.stringify(payload),
+  });
+}
 
 // ─── Health ──────────────────────────────────────────────────
 export function healthCheck() {

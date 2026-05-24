@@ -1,4 +1,5 @@
 import { Router } from 'express';
+import { z } from 'zod';
 import {
   insertSalesTransactions,
   getSalesTransactions,
@@ -10,6 +11,7 @@ import {
   getContractCoverageSummary,
   assignInsuranceCompany,
   type SalesTransactionInput,
+  type PortfolioFilter,
 } from '../repositories/sales.repository.js';
 import { getSalesPotential } from '../repositories/potential.repository.js';
 import { validate } from '../middleware/validate.js';
@@ -19,6 +21,15 @@ import {
   INSURANCE_COMPANY_MAP,
   type AssignCompanyBody,
 } from '../validators/sales.schemas.js';
+
+const portfolioTypeSchema = z
+  .enum(['personal', 'partners', 'all'])
+  .default('all');
+
+function parsePortfolioType(raw: unknown): PortfolioFilter {
+  const result = portfolioTypeSchema.safeParse(raw);
+  return result.success ? result.data : 'all';
+}
 
 export const salesRouter = Router();
 
@@ -88,8 +99,9 @@ salesRouter.get('/', async (req, res, next) => {
   try {
     const agentId = (res.locals.sub || res.locals.agentId) as string;
     const month = req.query.month as string | undefined;
+    const portfolioType = parsePortfolioType(req.query.portfolioType);
 
-    const transactions = await getSalesTransactions(agentId, month);
+    const transactions = await getSalesTransactions(agentId, month, portfolioType);
 
     res.json({
       data: transactions,
@@ -109,7 +121,8 @@ salesRouter.get('/', async (req, res, next) => {
 salesRouter.get('/summary', async (req, res, next) => {
   try {
     const agentId = (res.locals.sub || res.locals.agentId) as string;
-    const summary = await getMonthlySalarySummary(agentId);
+    const portfolioType = parsePortfolioType(req.query.portfolioType);
+    const summary = await getMonthlySalarySummary(agentId, portfolioType);
 
     res.json({
       data: summary,
@@ -129,7 +142,8 @@ salesRouter.get('/summary', async (req, res, next) => {
 salesRouter.get('/portfolio', async (req, res, next) => {
   try {
     const agentId = (res.locals.sub || res.locals.agentId) as string;
-    const analysis = await getPortfolioAnalysis(agentId);
+    const portfolioType = parsePortfolioType(req.query.portfolioType);
+    const analysis = await getPortfolioAnalysis(agentId, portfolioType);
 
     res.json({
       data: analysis,
@@ -150,8 +164,9 @@ salesRouter.get('/clients', async (req, res, next) => {
   try {
     const agentId = (res.locals.sub || res.locals.agentId) as string;
     const search = req.query.search as string | undefined;
+    const portfolioType = parsePortfolioType(req.query.portfolioType);
 
-    const clients = await searchClients(agentId, search);
+    const clients = await searchClients(agentId, search, 50, portfolioType);
 
     res.json({
       data: clients,
@@ -174,15 +189,15 @@ salesRouter.get(
   async (req, res, next) => {
     try {
       const agentId = (res.locals.sub || res.locals.agentId) as string;
-      const { month, detailed, limit, page } =
+      const { month, detailed, limit, page, portfolioType } =
         res.locals.parsedQuery as import('../validators/sales.schemas.js').ContractCoverageQuery;
 
       const offset = (page - 1) * limit;
 
       const [summary, transactions] = await Promise.all([
-        getContractCoverageSummary(agentId, { month }),
+        getContractCoverageSummary(agentId, { month, portfolioType }),
         detailed
-          ? getSalesWithContractStatus(agentId, { month, limit, offset })
+          ? getSalesWithContractStatus(agentId, { month, limit, offset, portfolioType })
           : Promise.resolve(undefined),
       ]);
 
@@ -211,7 +226,8 @@ salesRouter.get(
 salesRouter.get('/potential', async (req, res, next) => {
   try {
     const agentId = (res.locals.sub || res.locals.agentId) as string;
-    const result = await getSalesPotential(agentId);
+    const portfolioType = parsePortfolioType(req.query.portfolioType);
+    const result = await getSalesPotential(agentId, portfolioType);
 
     res.json({
       data: result,

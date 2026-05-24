@@ -14,6 +14,8 @@ export type ExcelReportType =
   | 'agent_data'             // רשימת נתונים לסוכן
   | 'product_distribution';  // התפלגות עמלות לפי מוצרים
 
+export type RecordPortfolioType = 'personal' | 'partners' | 'unknown';
+
 export interface ParsedCommissionRecord {
   id: string;
   reportType: ExcelReportType;
@@ -47,6 +49,7 @@ export interface ParsedCommissionRecord {
   paymentAmount: number | null;
   contractNumber: string | null;
   rawRow: Record<string, unknown>;
+  portfolioType?: RecordPortfolioType;
 }
 
 export interface ParseResult {

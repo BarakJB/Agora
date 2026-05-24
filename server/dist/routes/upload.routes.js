@@ -17,12 +17,60 @@ const menora_csv_parser_service_js_1 = require("../services/menora-csv-parser.se
 const pdf_agreement_parser_service_js_1 = require("../services/pdf-agreement-parser.service.js");
 const upload = (0, multer_1.default)({ storage: multer_1.default.memoryStorage(), limits: { fileSize: 10 * 1024 * 1024 } });
 exports.uploadRouter = (0, express_1.Router)();
-// GET /api/v1/uploads/agent-numbers/:agentId — all company numbers for an agent
 exports.uploadRouter.get('/agent-numbers/:agentId', async (req, res, next) => {
     try {
         const { agentId } = req.params;
         const numbers = await (0, mysql_repository_js_1.getAgentCompanyNumbers)(agentId);
         res.json({ data: numbers, error: null, meta: null });
+    }
+    catch (err) {
+        next(err);
+    }
+});
+exports.uploadRouter.get('/agent-numbers', async (req, res, next) => {
+    try {
+        const agentId = res.locals.agentId;
+        const numbers = await (0, mysql_repository_js_1.getAgentCompanyNumbersWithPortfolio)(agentId);
+        res.json({ data: numbers, error: null, meta: { count: numbers.length } });
+    }
+    catch (err) {
+        next(err);
+    }
+});
+exports.uploadRouter.post('/agent-numbers', async (req, res, next) => {
+    try {
+        const agentId = res.locals.agentId;
+        const { insuranceCompanyId, companyAgentNumber, portfolioType } = req.body;
+        if (!insuranceCompanyId || !companyAgentNumber || !portfolioType) {
+            res.status(400).json({ data: null, error: 'insuranceCompanyId, companyAgentNumber and portfolioType are required', meta: null });
+            return;
+        }
+        if (portfolioType !== 'personal' && portfolioType !== 'partners') {
+            res.status(400).json({ data: null, error: 'portfolioType must be personal or partners', meta: null });
+            return;
+        }
+        await (0, mysql_repository_js_1.upsertAgentCompanyNumber)(agentId, insuranceCompanyId, companyAgentNumber, portfolioType);
+        const updated = await (0, mysql_repository_js_1.getAgentNumbersByCompany)(agentId, insuranceCompanyId);
+        res.json({ data: updated, error: null, meta: null });
+    }
+    catch (err) {
+        next(err);
+    }
+});
+exports.uploadRouter.delete('/agent-numbers', async (req, res, next) => {
+    try {
+        const agentId = res.locals.agentId;
+        const { insuranceCompanyId, portfolioType } = req.body;
+        if (!insuranceCompanyId || !portfolioType) {
+            res.status(400).json({ data: null, error: 'insuranceCompanyId and portfolioType are required', meta: null });
+            return;
+        }
+        if (portfolioType !== 'personal' && portfolioType !== 'partners') {
+            res.status(400).json({ data: null, error: 'portfolioType must be personal or partners', meta: null });
+            return;
+        }
+        await (0, mysql_repository_js_1.deleteAgentCompanyNumber)(agentId, insuranceCompanyId, portfolioType);
+        res.json({ data: null, error: null, meta: null });
     }
     catch (err) {
         next(err);
@@ -289,46 +337,51 @@ exports.uploadRouter.post('/parse', upload.single('file'), async (req, res, next
         let isAgreement = false;
         let agreementAgentNumber = null;
         let agreementAgentTaxId = null;
-        let skippedDueMismatch = 0;
+        let portfolioSummary = { personal: 0, partners: 0, unknown: 0 };
         let mismatchWarning = null;
         try {
             results = (0, excel_parser_service_js_1.parseExcelBuffer)(file.buffer);
-            // Filter records by registered agent number
             if (agentId && insuranceCompanyCode) {
                 const insuranceCompanyId = await (0, mysql_repository_js_1.resolveInsuranceCompanyId)(insuranceCompanyCode);
                 if (insuranceCompanyId) {
-                    const registeredNumber = await (0, mysql_repository_js_1.getRegisteredAgentNumber)(agentId, insuranceCompanyId);
-                    if (registeredNumber !== null) {
-                        // Filter out records whose agent number doesn't match
-                        for (const sheet of results) {
-                            const before = sheet.records.length;
-                            sheet.records = sheet.records.filter((rec) => !rec.agentNumber || rec.agentNumber === registeredNumber);
-                            skippedDueMismatch += before - sheet.records.length;
-                        }
-                        if (skippedDueMismatch > 0) {
-                            mismatchWarning = `${skippedDueMismatch} שורות לא נכללו בחישוב — מספר סוכן בקובץ אינו תואם למספר הרשום שלך (${registeredNumber})`;
-                        }
-                    }
-                    else {
-                        // No registered number yet — register from first valid record
-                        const firstNumber = results
-                            .flatMap((r) => r.records)
-                            .find((rec) => rec.agentNumber)?.agentNumber ?? null;
-                        if (firstNumber) {
-                            const owner = await (0, mysql_repository_js_1.getAgentByCompanyNumber)(insuranceCompanyId, firstNumber);
-                            if (owner && owner.agentId !== agentId) {
-                                // Number belongs to another agent — filter all records with this number
-                                for (const sheet of results) {
-                                    const before = sheet.records.length;
-                                    sheet.records = sheet.records.filter((rec) => !rec.agentNumber);
-                                    skippedDueMismatch += before - sheet.records.length;
+                    const knownNumbers = await (0, mysql_repository_js_1.getAgentNumbersByCompany)(agentId, insuranceCompanyId);
+                    const hasRegisteredNumbers = knownNumbers.personal !== undefined || knownNumbers.partners !== undefined;
+                    for (const sheet of results) {
+                        for (const rec of sheet.records) {
+                            const agentNum = rec.agentNumber ?? null;
+                            if (!agentNum) {
+                                rec.portfolioType = 'unknown';
+                                portfolioSummary.unknown++;
+                                continue;
+                            }
+                            const resolved = await (0, mysql_repository_js_1.resolvePortfolioByAgentNumber)(agentId, insuranceCompanyId, agentNum);
+                            if (resolved !== null) {
+                                rec.portfolioType = resolved;
+                                if (resolved === 'personal')
+                                    portfolioSummary.personal++;
+                                else
+                                    portfolioSummary.partners++;
+                            }
+                            else if (!hasRegisteredNumbers) {
+                                const owner = await (0, mysql_repository_js_1.getAgentByCompanyNumber)(insuranceCompanyId, agentNum);
+                                if (owner && owner.agentId !== agentId) {
+                                    rec.portfolioType = 'unknown';
+                                    portfolioSummary.unknown++;
                                 }
-                                mismatchWarning = `${skippedDueMismatch} שורות לא נכללו — מספר סוכן ${firstNumber} רשום על שם סוכן אחר`;
+                                else {
+                                    await (0, mysql_repository_js_1.upsertAgentCompanyNumber)(agentId, insuranceCompanyId, agentNum, 'personal');
+                                    rec.portfolioType = 'personal';
+                                    portfolioSummary.personal++;
+                                }
                             }
                             else {
-                                await (0, mysql_repository_js_1.upsertAgentCompanyNumber)(agentId, insuranceCompanyId, firstNumber);
+                                rec.portfolioType = 'unknown';
+                                portfolioSummary.unknown++;
                             }
                         }
+                    }
+                    if (portfolioSummary.unknown > 0) {
+                        mismatchWarning = `${portfolioSummary.unknown} שורות עם מספר סוכן לא מזוהה (portfolio_type = unknown)`;
                     }
                 }
             }
@@ -354,16 +407,16 @@ exports.uploadRouter.post('/parse', upload.single('file'), async (req, res, next
                             });
                             return;
                         }
-                        const registeredNumber = await (0, mysql_repository_js_1.getRegisteredAgentNumber)(agentId, insuranceCompanyId);
-                        if (registeredNumber !== null && registeredNumber !== agreement.agentNumber) {
+                        const registered = await (0, mysql_repository_js_1.getRegisteredAgentNumber)(agentId, insuranceCompanyId);
+                        if (registered !== null && registered.companyAgentNumber !== agreement.agentNumber) {
                             res.status(403).json({
                                 data: null,
-                                error: `מספר סוכן בהסכם (${agreement.agentNumber}) שונה מהמספר הרשום (${registeredNumber})`,
+                                error: `מספר סוכן בהסכם (${agreement.agentNumber}) שונה מהמספר הרשום (${registered.companyAgentNumber})`,
                                 meta: null,
                             });
                             return;
                         }
-                        await (0, mysql_repository_js_1.upsertAgentCompanyNumber)(agentId, insuranceCompanyId, agreement.agentNumber);
+                        await (0, mysql_repository_js_1.upsertAgentCompanyNumber)(agentId, insuranceCompanyId, agreement.agentNumber, registered?.portfolioType ?? 'personal');
                     }
                 }
                 results = [{
@@ -433,7 +486,7 @@ exports.uploadRouter.post('/parse', upload.single('file'), async (req, res, next
                 detectedCompany,
                 agentNumber: agreementAgentNumber,
                 agentTaxId: agreementAgentTaxId,
-                skippedDueMismatch,
+                portfolioSummary,
                 mismatchWarning,
                 warning: companyMismatch,
             },

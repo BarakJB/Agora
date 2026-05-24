@@ -13,6 +13,9 @@ exports.contractCoverageQuerySchema = common_schemas_js_1.paginationQuerySchema.
         .enum(['true', 'false'])
         .transform((v) => v === 'true')
         .default('false'),
+    portfolioType: zod_1.z
+        .enum(['personal', 'partners', 'all'])
+        .default('all'),
 });
 exports.INSURANCE_COMPANY_MAP = {
     harel: 'הראל',

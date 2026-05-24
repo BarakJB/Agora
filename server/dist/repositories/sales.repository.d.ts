@@ -1,3 +1,5 @@
+export type SalesPortfolioType = 'personal' | 'partners' | 'unknown';
+export type PortfolioFilter = 'personal' | 'partners' | 'all';
 export interface SalesTransactionInput {
     reportType: string;
     processingMonth: string;
@@ -25,11 +27,13 @@ export interface SalesTransactionInput {
     managementFeePct?: number | null;
     managementFeeAmount?: number | null;
     transactionType?: string | null;
+    portfolioType?: SalesPortfolioType;
 }
 export interface SalesTransaction {
     id: string;
     agentId: string;
     insuranceCompany: string;
+    portfolioType: SalesPortfolioType;
     reportType: string;
     processingMonth: string;
     productionMonth: string | null;
@@ -71,7 +75,7 @@ export declare function insertSalesTransactions(agentId: string, insuranceCompan
 /**
  * Get sales transactions for an agent, optionally filtered by processing_month.
  */
-export declare function getSalesTransactions(agentId: string, month?: string): Promise<SalesTransaction[]>;
+export declare function getSalesTransactions(agentId: string, month?: string, portfolioType?: PortfolioFilter): Promise<SalesTransaction[]>;
 /**
  * Monthly salary summary for an agent: total commission and record count per month.
  */
@@ -101,7 +105,7 @@ export interface ClientTransactionRow {
  * Search clients (unique insured_id + insured_name) for an agent.
  * Optionally filter by name or ID search term.
  */
-export declare function searchClients(agentId: string, search?: string, limit?: number): Promise<ClientSummaryRow[]>;
+export declare function searchClients(agentId: string, search?: string, limit?: number, portfolioType?: PortfolioFilter): Promise<ClientSummaryRow[]>;
 /**
  * Get all transactions for a specific client (by insured_id) belonging to an agent.
  */
@@ -160,7 +164,7 @@ export interface PortfolioAnalysis {
     atRisk: PortfolioAtRisk[];
     newClients: PortfolioNewClient[];
 }
-export declare function getPortfolioAnalysis(agentId: string): Promise<PortfolioAnalysis>;
+export declare function getPortfolioAnalysis(agentId: string, portfolioType?: PortfolioFilter): Promise<PortfolioAnalysis>;
 export type ContractStatus = 'covered' | 'uncovered';
 export interface SalesTransactionWithContract extends SalesTransaction {
     contractStatus: ContractStatus;
@@ -182,15 +186,17 @@ export declare function getSalesWithContractStatus(agentId: string, opts?: {
     month?: string;
     limit?: number;
     offset?: number;
+    portfolioType?: PortfolioFilter;
 }): Promise<SalesTransactionWithContract[]>;
 /**
  * Aggregated coverage summary for the agent, optionally scoped to a month.
  */
 export declare function getContractCoverageSummary(agentId: string, opts?: {
     month?: string;
+    portfolioType?: PortfolioFilter;
 }): Promise<ContractCoverageSummary>;
 export declare function assignInsuranceCompany(agentId: string, insuredId: string, policyNumber: string, insuranceCompany: string): Promise<{
     updated: number;
 }>;
-export declare function getMonthlySalarySummary(agentId: string): Promise<MonthlySalarySummary[]>;
+export declare function getMonthlySalarySummary(agentId: string, portfolioType?: PortfolioFilter): Promise<MonthlySalarySummary[]>;
 //# sourceMappingURL=sales.repository.d.ts.map

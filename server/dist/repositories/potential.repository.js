@@ -112,7 +112,7 @@ function buildEmployerClusters(rows) {
     }));
 }
 // ─── Queries ──────────────────────────────────────────────────────────────────
-async function queryClients(agentId) {
+async function queryClients(agentId, portfolioFilter) {
     const [rows] = await database_js_1.default.query(`SELECT insured_name,
             MAX(insured_id) AS insured_id,
             MAX(employer_name) AS employer_name,
@@ -125,7 +125,7 @@ async function queryClients(agentId) {
      FROM sales_transactions
      WHERE agent_id = ?
        AND report_type IN ${POLICY_REPORT_TYPES}
-       AND insured_name IS NOT NULL AND insured_name != ''
+       AND insured_name IS NOT NULL AND insured_name != ''${portfolioFilter}
      GROUP BY insured_name
      HAVING total > 0`, [agentId]);
     return rows.map((r) => ({
@@ -139,19 +139,19 @@ async function queryClients(agentId) {
         total: Number(r.total),
     }));
 }
-async function queryLatestMonth(agentId) {
+async function queryLatestMonth(agentId, portfolioFilter) {
     const [rows] = await database_js_1.default.query(`SELECT MAX(processing_month) AS latest
      FROM sales_transactions
-     WHERE agent_id = ? AND report_type IN ${POLICY_REPORT_TYPES}`, [agentId]);
+     WHERE agent_id = ? AND report_type IN ${POLICY_REPORT_TYPES}${portfolioFilter}`, [agentId]);
     return rows[0]?.latest || '';
 }
-async function queryBranchTotals(agentId) {
+async function queryBranchTotals(agentId, portfolioFilter) {
     const [rows] = await database_js_1.default.query(`SELECT COALESCE(branch, 'אחר') AS branch,
             ROUND(SUM(commission_amount), 2) AS total
      FROM sales_transactions
      WHERE agent_id = ?
        AND report_type IN ${POLICY_REPORT_TYPES}
-       AND branch IS NOT NULL AND branch != ''
+       AND branch IS NOT NULL AND branch != ''${portfolioFilter}
      GROUP BY COALESCE(branch, 'אחר')
      ORDER BY total DESC`, [agentId]);
     return rows.map((r) => ({
@@ -159,7 +159,7 @@ async function queryBranchTotals(agentId) {
         total: Number(r.total),
     }));
 }
-async function queryEmployerClusters(agentId) {
+async function queryEmployerClusters(agentId, portfolioFilter) {
     const [rows] = await database_js_1.default.query(`SELECT employer_name,
             MAX(employer_id) AS employer_id,
             COUNT(DISTINCT insured_name) AS employees,
@@ -168,7 +168,7 @@ async function queryEmployerClusters(agentId) {
      FROM sales_transactions
      WHERE agent_id = ?
        AND report_type IN ${POLICY_REPORT_TYPES}
-       AND employer_name IS NOT NULL AND employer_name != ''
+       AND employer_name IS NOT NULL AND employer_name != ''${portfolioFilter}
      GROUP BY employer_name
      HAVING employees >= 3
      ORDER BY total DESC
@@ -182,12 +182,13 @@ async function queryEmployerClusters(agentId) {
     }));
 }
 // ─── Public API ───────────────────────────────────────────────────────────────
-async function getSalesPotential(agentId) {
+async function getSalesPotential(agentId, portfolioType = 'all') {
+    const portfolioFilter = portfolioType !== 'all' ? ` AND portfolio_type = '${portfolioType}'` : '';
     const [clients, latestMonth, branchTotals, employerRows] = await Promise.all([
-        queryClients(agentId),
-        queryLatestMonth(agentId),
-        queryBranchTotals(agentId),
-        queryEmployerClusters(agentId),
+        queryClients(agentId, portfolioFilter),
+        queryLatestMonth(agentId, portfolioFilter),
+        queryBranchTotals(agentId, portfolioFilter),
+        queryEmployerClusters(agentId, portfolioFilter),
     ]);
     const agentBranchMix = buildAgentBranchMix(branchTotals);
     // Top 5 branches by commission weight — these define the agent's "product basket"

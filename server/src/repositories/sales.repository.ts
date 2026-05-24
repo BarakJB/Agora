@@ -6,6 +6,9 @@ import pool from '../config/database.js';
 // of the same data — including them causes double-counting.
 const POLICY_REPORT_TYPES = `('nifraim','hekef','accumulation_nifraim','accumulation_hekef')`;
 
+export type SalesPortfolioType = 'personal' | 'partners' | 'unknown';
+export type PortfolioFilter = 'personal' | 'partners' | 'all';
+
 export interface SalesTransactionInput {
   reportType: string;
   processingMonth: string;
@@ -33,12 +36,14 @@ export interface SalesTransactionInput {
   managementFeePct?: number | null;
   managementFeeAmount?: number | null;
   transactionType?: string | null;
+  portfolioType?: SalesPortfolioType;
 }
 
 export interface SalesTransaction {
   id: string;
   agentId: string;
   insuranceCompany: string;
+  portfolioType: SalesPortfolioType;
   reportType: string;
   processingMonth: string;
   productionMonth: string | null;
@@ -79,6 +84,7 @@ function toSalesTransaction(row: RowDataPacket): SalesTransaction {
     id: row.id,
     agentId: row.agent_id,
     insuranceCompany: row.insurance_company,
+    portfolioType: (row.portfolio_type as SalesPortfolioType) ?? 'unknown',
     reportType: row.report_type,
     processingMonth: row.processing_month,
     productionMonth: row.production_month ?? null,
@@ -149,11 +155,12 @@ export async function insertSalesTransactions(
     const values: unknown[] = [];
 
     for (const r of chunk) {
-      placeholders.push('(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)');
+      placeholders.push('(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)');
       values.push(
         uuid(),
         agentId,
         insuranceCompany,
+        r.portfolioType ?? 'unknown',
         r.reportType,
         r.processingMonth,
         r.productionMonth ?? null,
@@ -182,7 +189,7 @@ export async function insertSalesTransactions(
     }
 
     const sql = `INSERT INTO sales_transactions
-      (id, agent_id, insurance_company, report_type, processing_month, production_month,
+      (id, agent_id, insurance_company, portfolio_type, report_type, processing_month, production_month,
        insured_name, insured_id, employer_name, employer_id, policy_number, branch,
        sub_branch, product_name, fund_type, plan_type, premium, commission_amount,
        commission_rate, collection_fee, advance_amount, advance_balance, payment_amount,
@@ -202,8 +209,9 @@ export async function insertSalesTransactions(
 export async function getSalesTransactions(
   agentId: string,
   month?: string,
+  portfolioType: PortfolioFilter = 'all',
 ): Promise<SalesTransaction[]> {
-  let sql = `SELECT id, agent_id, insurance_company, report_type, processing_month,
+  let sql = `SELECT id, agent_id, insurance_company, portfolio_type, report_type, processing_month,
                     production_month, insured_name, insured_id, employer_name, employer_id,
                     policy_number, branch, sub_branch, product_name, fund_type, plan_type,
                     premium, commission_amount, commission_rate, collection_fee,
@@ -217,6 +225,11 @@ export async function getSalesTransactions(
   if (month) {
     sql += ' AND processing_month = ?';
     params.push(month);
+  }
+
+  if (portfolioType !== 'all') {
+    sql += ' AND portfolio_type = ?';
+    params.push(portfolioType);
   }
 
   sql += ' ORDER BY processing_month DESC, created_at DESC LIMIT 10000';
@@ -260,9 +273,8 @@ export async function searchClients(
   agentId: string,
   search?: string,
   limit = 50,
+  portfolioType: PortfolioFilter = 'all',
 ): Promise<ClientSummaryRow[]> {
-  // Calculate per-client: latest month commission, monthly average, and total
-  // Only policy-level report types to avoid double-counting aggregates
   let sql = `
     SELECT insured_name,
            MAX(insured_id) AS insured_id,
@@ -288,6 +300,11 @@ export async function searchClients(
     const term = `%${search.trim()}%`;
     sql += ' AND (s.insured_name LIKE ? OR s.insured_id LIKE ?)';
     params.push(term, term);
+  }
+
+  if (portfolioType !== 'all') {
+    sql += ' AND s.portfolio_type = ?';
+    params.push(portfolioType);
   }
 
   sql += ' GROUP BY s.insured_name ORDER BY last_month DESC, total_commission DESC LIMIT ?';
@@ -405,15 +422,19 @@ export interface PortfolioAnalysis {
   newClients: PortfolioNewClient[];
 }
 
-export async function getPortfolioAnalysis(agentId: string): Promise<PortfolioAnalysis> {
-  // 1. Overview — only policy-level report types to avoid double-counting aggregates
+export async function getPortfolioAnalysis(
+  agentId: string,
+  portfolioType: PortfolioFilter = 'all',
+): Promise<PortfolioAnalysis> {
+  const portfolioFilter = portfolioType !== 'all' ? ` AND portfolio_type = '${portfolioType}'` : '';
+
   const [overviewRows] = await pool.query<RowDataPacket[]>(
     `SELECT
-       (SELECT COUNT(DISTINCT insured_name) FROM sales_transactions WHERE agent_id = ? AND report_type IN ${POLICY_REPORT_TYPES} AND insured_name IS NOT NULL AND insured_name != '') AS total_clients,
+       (SELECT COUNT(DISTINCT insured_name) FROM sales_transactions WHERE agent_id = ? AND report_type IN ${POLICY_REPORT_TYPES} AND insured_name IS NOT NULL AND insured_name != ''${portfolioFilter}) AS total_clients,
        ROUND(SUM(commission_amount), 2) AS total_commission,
        COUNT(DISTINCT processing_month) AS months_tracked
      FROM sales_transactions
-     WHERE agent_id = ? AND report_type IN ${POLICY_REPORT_TYPES}`,
+     WHERE agent_id = ? AND report_type IN ${POLICY_REPORT_TYPES}${portfolioFilter}`,
     [agentId, agentId],
   );
 
@@ -423,7 +444,6 @@ export async function getPortfolioAnalysis(agentId: string): Promise<PortfolioAn
   const monthlyAverage = Math.round(totalCommission / monthsTracked);
   const avgCommissionPerClient = totalClients > 0 ? Math.round(totalCommission / totalClients) : 0;
 
-  // 2. By branch
   const [branchRows] = await pool.query<RowDataPacket[]>(
     `SELECT COALESCE(branch, 'אחר') AS branch,
             ROUND(SUM(commission_amount), 2) AS total,
@@ -431,7 +451,7 @@ export async function getPortfolioAnalysis(agentId: string): Promise<PortfolioAn
      FROM sales_transactions
      WHERE agent_id = ?
        AND report_type IN ${POLICY_REPORT_TYPES}
-       AND insured_name IS NOT NULL AND insured_name != ''
+       AND insured_name IS NOT NULL AND insured_name != ''${portfolioFilter}
      GROUP BY COALESCE(branch, 'אחר')
      ORDER BY total DESC`,
     [agentId],
@@ -444,7 +464,6 @@ export async function getPortfolioAnalysis(agentId: string): Promise<PortfolioAn
     pct: totalCommission > 0 ? Math.round((Number(r.total) / totalCommission) * 100) : 0,
   }));
 
-  // 3. Top clients
   const [topRows] = await pool.query<RowDataPacket[]>(
     `SELECT insured_name AS name,
             MAX(insured_id) AS id,
@@ -455,14 +474,13 @@ export async function getPortfolioAnalysis(agentId: string): Promise<PortfolioAn
      FROM sales_transactions
      WHERE agent_id = ?
        AND report_type IN ${POLICY_REPORT_TYPES}
-       AND insured_name IS NOT NULL AND insured_name != ''
+       AND insured_name IS NOT NULL AND insured_name != ''${portfolioFilter}
      GROUP BY insured_name
      ORDER BY total DESC
      LIMIT 20`,
     [agentId],
   );
 
-  // For trend calculation, get last two months per client
   const [trendRows] = await pool.query<RowDataPacket[]>(
     `SELECT insured_name,
             processing_month,
@@ -470,13 +488,12 @@ export async function getPortfolioAnalysis(agentId: string): Promise<PortfolioAn
      FROM sales_transactions
      WHERE agent_id = ?
        AND report_type IN ${POLICY_REPORT_TYPES}
-       AND insured_name IS NOT NULL AND insured_name != ''
+       AND insured_name IS NOT NULL AND insured_name != ''${portfolioFilter}
      GROUP BY insured_name, processing_month
      ORDER BY insured_name, processing_month DESC`,
     [agentId],
   );
 
-  // Build trend map: client -> [latest, previous]
   const trendMap = new Map<string, number[]>();
   for (const r of trendRows) {
     const name = r.insured_name as string;
@@ -506,13 +523,12 @@ export async function getPortfolioAnalysis(agentId: string): Promise<PortfolioAn
     };
   });
 
-  // 4. Monthly trend — policy-level records only
   const [monthlyRows] = await pool.query<RowDataPacket[]>(
     `SELECT processing_month AS month,
             ROUND(SUM(commission_amount), 2) AS total,
             COUNT(DISTINCT CASE WHEN insured_name IS NOT NULL AND insured_name != '' THEN insured_name END) AS clients
      FROM sales_transactions
-     WHERE agent_id = ? AND report_type IN ${POLICY_REPORT_TYPES}
+     WHERE agent_id = ? AND report_type IN ${POLICY_REPORT_TYPES}${portfolioFilter}
      GROUP BY processing_month
      ORDER BY processing_month ASC`,
     [agentId],
@@ -524,15 +540,12 @@ export async function getPortfolioAnalysis(agentId: string): Promise<PortfolioAn
     clients: Number(r.clients),
   }));
 
-  // 5. Concentration (from topClients sorted by total desc)
-  const allClientTotals = topRows.map((r) => Number(r.total));
-  // We need all clients for concentration, not just top 20
   const [allTotalsRows] = await pool.query<RowDataPacket[]>(
     `SELECT ROUND(SUM(commission_amount), 2) AS total
      FROM sales_transactions
      WHERE agent_id = ?
        AND report_type IN ${POLICY_REPORT_TYPES}
-       AND insured_name IS NOT NULL AND insured_name != ''
+       AND insured_name IS NOT NULL AND insured_name != ''${portfolioFilter}
      GROUP BY insured_name
      ORDER BY total DESC`,
     [agentId],
@@ -553,17 +566,15 @@ export async function getPortfolioAnalysis(agentId: string): Promise<PortfolioAn
     top20Pct: topPct(20),
   };
 
-  // 6. At risk — clients whose latest month < previous month by 20%+
   const atRisk: PortfolioAtRisk[] = [];
   for (const [name, arr] of trendMap) {
     if (arr.length >= 2 && arr[1] > 0) {
       const dropPct = Math.round(((arr[1] - arr[0]) / arr[1]) * 100);
       if (dropPct >= 20) {
-        // Find lastMonth for this client
         const clientTrend = trendRows.find((r) => r.insured_name === name);
         atRisk.push({
           name,
-          id: '', // will be filled below
+          id: '',
           lastAmount: arr[0],
           prevAmount: arr[1],
           dropPct,
@@ -573,13 +584,12 @@ export async function getPortfolioAnalysis(agentId: string): Promise<PortfolioAn
     }
   }
 
-  // Fill IDs for at-risk clients
   if (atRisk.length > 0) {
     const namesForId = atRisk.map((c) => c.name);
     const [idRows] = await pool.query<RowDataPacket[]>(
       `SELECT insured_name, MAX(insured_id) AS insured_id
        FROM sales_transactions
-       WHERE agent_id = ? AND report_type IN ${POLICY_REPORT_TYPES} AND insured_name IN (${namesForId.map(() => '?').join(',')})
+       WHERE agent_id = ? AND report_type IN ${POLICY_REPORT_TYPES} AND insured_name IN (${namesForId.map(() => '?').join(',')})${portfolioFilter}
        GROUP BY insured_name`,
       [agentId, ...namesForId],
     );
@@ -589,11 +599,9 @@ export async function getPortfolioAnalysis(agentId: string): Promise<PortfolioAn
     }
   }
 
-  // Sort at risk by drop pct desc, limit 20
   atRisk.sort((a, b) => b.dropPct - a.dropPct);
   atRisk.splice(20);
 
-  // 7. New clients — first appeared in the latest month
   const latestMonth = monthlyTrend.length > 0 ? monthlyTrend[monthlyTrend.length - 1].month : null;
 
   let newClients: PortfolioNewClient[] = [];
@@ -606,7 +614,7 @@ export async function getPortfolioAnalysis(agentId: string): Promise<PortfolioAn
        FROM sales_transactions
        WHERE agent_id = ?
          AND report_type IN ${POLICY_REPORT_TYPES}
-         AND insured_name IS NOT NULL AND insured_name != ''
+         AND insured_name IS NOT NULL AND insured_name != ''${portfolioFilter}
        GROUP BY insured_name
        HAVING MIN(processing_month) = ?
        ORDER BY total DESC
@@ -672,22 +680,26 @@ function toSalesTransactionWithContract(row: RowDataPacket): SalesTransactionWit
  */
 export async function getSalesWithContractStatus(
   agentId: string,
-  opts: { month?: string; limit?: number; offset?: number } = {},
+  opts: { month?: string; limit?: number; offset?: number; portfolioType?: PortfolioFilter } = {},
 ): Promise<SalesTransactionWithContract[]> {
-  const { month, limit = 500, offset = 0 } = opts;
+  const { month, limit = 500, offset = 0, portfolioType = 'all' } = opts;
 
   const params: unknown[] = [agentId];
-  let monthFilter = '';
+  let extraFilters = '';
   if (month) {
-    monthFilter = ' AND s.processing_month = ?';
+    extraFilters += ' AND s.processing_month = ?';
     params.push(month);
+  }
+  if (portfolioType !== 'all') {
+    extraFilters += ' AND s.portfolio_type = ?';
+    params.push(portfolioType);
   }
 
   params.push(limit, offset);
 
   const sql = `
     SELECT
-      s.id, s.agent_id, s.insurance_company, s.report_type,
+      s.id, s.agent_id, s.insurance_company, s.portfolio_type, s.report_type,
       s.processing_month, s.production_month,
       s.insured_name, s.insured_id, s.employer_name, s.employer_id,
       s.policy_number, s.branch, s.sub_branch, s.product_name,
@@ -704,7 +716,7 @@ export async function getSalesWithContractStatus(
       ON  aar.agent_id = s.agent_id
       AND aar.company  = s.insurance_company
       AND aar.product  = s.branch
-    WHERE s.agent_id = ?${monthFilter}
+    WHERE s.agent_id = ?${extraFilters}
     ORDER BY s.processing_month DESC, s.created_at DESC
     LIMIT ? OFFSET ?`;
 
@@ -717,13 +729,18 @@ export async function getSalesWithContractStatus(
  */
 export async function getContractCoverageSummary(
   agentId: string,
-  opts: { month?: string } = {},
+  opts: { month?: string; portfolioType?: PortfolioFilter } = {},
 ): Promise<ContractCoverageSummary> {
+  const { month, portfolioType = 'all' } = opts;
   const params: unknown[] = [agentId];
-  let monthFilter = '';
-  if (opts.month) {
-    monthFilter = ' AND s.processing_month = ?';
-    params.push(opts.month);
+  let extraFilters = '';
+  if (month) {
+    extraFilters += ' AND s.processing_month = ?';
+    params.push(month);
+  }
+  if (portfolioType !== 'all') {
+    extraFilters += ' AND s.portfolio_type = ?';
+    params.push(portfolioType);
   }
 
   const sql = `
@@ -737,7 +754,7 @@ export async function getContractCoverageSummary(
       ON  aar.agent_id = s.agent_id
       AND aar.company  = s.insurance_company
       AND aar.product  = s.branch
-    WHERE s.agent_id = ?${monthFilter}`;
+    WHERE s.agent_id = ?${extraFilters}`;
 
   const [rows] = await pool.query<RowDataPacket[]>(sql, params);
   const r = rows[0];
@@ -792,17 +809,23 @@ export async function assignInsuranceCompany(
 
 export async function getMonthlySalarySummary(
   agentId: string,
+  portfolioType: PortfolioFilter = 'all',
 ): Promise<MonthlySalarySummary[]> {
-  const [rows] = await pool.query<RowDataPacket[]>(
-    `SELECT processing_month AS month,
+  let sql = `SELECT processing_month AS month,
             ROUND(SUM(commission_amount), 2) AS total_commission,
             COUNT(*) AS record_count
      FROM sales_transactions
-     WHERE agent_id = ?
-     GROUP BY processing_month
-     ORDER BY processing_month DESC`,
-    [agentId],
-  );
+     WHERE agent_id = ?`;
+  const params: unknown[] = [agentId];
+
+  if (portfolioType !== 'all') {
+    sql += ' AND portfolio_type = ?';
+    params.push(portfolioType);
+  }
+
+  sql += ' GROUP BY processing_month ORDER BY processing_month DESC';
+
+  const [rows] = await pool.query<RowDataPacket[]>(sql, params);
 
   return rows.map((r) => ({
     month: r.month as string,

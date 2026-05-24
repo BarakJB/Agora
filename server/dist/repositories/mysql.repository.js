@@ -40,7 +40,11 @@ exports.createCommissionReport = createCommissionReport;
 exports.getCommissionReportsByUpload = getCommissionReportsByUpload;
 exports.getCommissionRules = getCommissionRules;
 exports.upsertAgentCompanyNumber = upsertAgentCompanyNumber;
+exports.deleteAgentCompanyNumber = deleteAgentCompanyNumber;
 exports.getRegisteredAgentNumber = getRegisteredAgentNumber;
+exports.getAgentNumbersByCompany = getAgentNumbersByCompany;
+exports.getAgentCompanyNumbersWithPortfolio = getAgentCompanyNumbersWithPortfolio;
+exports.resolvePortfolioByAgentNumber = resolvePortfolioByAgentNumber;
 exports.getAgentByCompanyNumber = getAgentByCompanyNumber;
 exports.getAgentCompanyNumbers = getAgentCompanyNumbers;
 exports.getAgentCommissionRates = getAgentCommissionRates;
@@ -502,31 +506,60 @@ async function getCommissionRules(insuranceCompanyId, productType) {
         isActive: Boolean(r.is_active),
     }));
 }
-/**
- * Save or update the agent number for a specific agent at a specific company.
- * Uses INSERT ... ON DUPLICATE KEY UPDATE for idempotency.
- */
-async function upsertAgentCompanyNumber(agentId, insuranceCompanyId, companyAgentNumber) {
+async function upsertAgentCompanyNumber(agentId, insuranceCompanyId, companyAgentNumber, portfolioType = 'personal') {
     const id = (await import('uuid')).v4();
     await database_js_1.default.query(`INSERT INTO agent_company_numbers
-       (id, agent_id, insurance_company_id, company_agent_number)
-     VALUES (?, ?, ?, ?)
+       (id, agent_id, insurance_company_id, company_agent_number, portfolio_type)
+     VALUES (?, ?, ?, ?, ?)
      ON DUPLICATE KEY UPDATE
        company_agent_number = VALUES(company_agent_number),
-       updated_at = CURRENT_TIMESTAMP`, [id, agentId, insuranceCompanyId, companyAgentNumber]);
+       updated_at = CURRENT_TIMESTAMP`, [id, agentId, insuranceCompanyId, companyAgentNumber, portfolioType]);
 }
-/**
- * Get the registered agent number for a specific agent at a specific company.
- * Returns null if no mapping exists yet.
- */
+async function deleteAgentCompanyNumber(agentId, insuranceCompanyId, portfolioType) {
+    await database_js_1.default.query('DELETE FROM agent_company_numbers WHERE agent_id = ? AND insurance_company_id = ? AND portfolio_type = ?', [agentId, insuranceCompanyId, portfolioType]);
+}
 async function getRegisteredAgentNumber(agentId, insuranceCompanyId) {
-    const [rows] = await database_js_1.default.query('SELECT company_agent_number FROM agent_company_numbers WHERE agent_id = ? AND insurance_company_id = ? LIMIT 1', [agentId, insuranceCompanyId]);
-    return rows.length > 0 ? rows[0].company_agent_number : null;
+    const [rows] = await database_js_1.default.query('SELECT company_agent_number, portfolio_type FROM agent_company_numbers WHERE agent_id = ? AND insurance_company_id = ? LIMIT 1', [agentId, insuranceCompanyId]);
+    if (rows.length === 0)
+        return null;
+    return {
+        companyAgentNumber: rows[0].company_agent_number,
+        portfolioType: rows[0].portfolio_type,
+    };
 }
-/**
- * Resolve which agent owns a given agent number at a specific company.
- * Used to validate that an uploaded file belongs to the authenticated agent.
- */
+async function getAgentNumbersByCompany(agentId, insuranceCompanyId) {
+    const [rows] = await database_js_1.default.query('SELECT company_agent_number, portfolio_type FROM agent_company_numbers WHERE agent_id = ? AND insurance_company_id = ?', [agentId, insuranceCompanyId]);
+    const result = {};
+    for (const r of rows) {
+        if (r.portfolio_type === 'personal')
+            result.personal = r.company_agent_number;
+        else if (r.portfolio_type === 'partners')
+            result.partners = r.company_agent_number;
+    }
+    return result;
+}
+async function getAgentCompanyNumbersWithPortfolio(agentId) {
+    const [rows] = await database_js_1.default.query(`SELECT acn.insurance_company_id, ic.name AS insurance_company_name,
+            acn.company_agent_number, acn.portfolio_type
+     FROM agent_company_numbers acn
+     JOIN insurance_companies ic ON ic.id = acn.insurance_company_id
+     WHERE acn.agent_id = ?
+     ORDER BY ic.name, acn.portfolio_type`, [agentId]);
+    return rows.map((r) => ({
+        insuranceCompanyId: r.insurance_company_id,
+        insuranceCompanyName: r.insurance_company_name,
+        companyAgentNumber: r.company_agent_number,
+        portfolioType: r.portfolio_type,
+    }));
+}
+async function resolvePortfolioByAgentNumber(agentId, insuranceCompanyId, agentNumberInFile) {
+    const [rows] = await database_js_1.default.query(`SELECT portfolio_type FROM agent_company_numbers
+     WHERE agent_id = ? AND insurance_company_id = ? AND company_agent_number = ?
+     LIMIT 1`, [agentId, insuranceCompanyId, agentNumberInFile]);
+    if (rows.length === 0)
+        return null;
+    return rows[0].portfolio_type;
+}
 async function getAgentByCompanyNumber(insuranceCompanyId, companyAgentNumber) {
     const [rows] = await database_js_1.default.query(`SELECT acn.agent_id, a.agent_id AS tax_id
      FROM agent_company_numbers acn
@@ -538,23 +571,21 @@ async function getAgentByCompanyNumber(insuranceCompanyId, companyAgentNumber) {
         return null;
     return { agentId: rows[0].agent_id, taxId: rows[0].tax_id };
 }
-/**
- * Get all company numbers registered for a given agent.
- */
 async function getAgentCompanyNumbers(agentId) {
     const [rows] = await database_js_1.default.query(`SELECT acn.id, acn.agent_id, acn.insurance_company_id,
             ic.name AS insurance_company_name,
-            acn.company_agent_number, acn.created_at, acn.updated_at
+            acn.company_agent_number, acn.portfolio_type, acn.created_at, acn.updated_at
      FROM agent_company_numbers acn
      JOIN insurance_companies ic ON ic.id = acn.insurance_company_id
      WHERE acn.agent_id = ?
-     ORDER BY ic.name`, [agentId]);
+     ORDER BY ic.name, acn.portfolio_type`, [agentId]);
     return rows.map((r) => ({
         id: r.id,
         agentId: r.agent_id,
         insuranceCompanyId: r.insurance_company_id,
         insuranceCompanyName: r.insurance_company_name,
         companyAgentNumber: r.company_agent_number,
+        portfolioType: r.portfolio_type,
         createdAt: r.created_at,
         updatedAt: r.updated_at,
     }));

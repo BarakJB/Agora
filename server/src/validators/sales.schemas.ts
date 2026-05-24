@@ -12,6 +12,9 @@ export const contractCoverageQuerySchema = paginationQuerySchema.extend({
     .enum(['true', 'false'])
     .transform((v) => v === 'true')
     .default('false'),
+  portfolioType: z
+    .enum(['personal', 'partners', 'all'])
+    .default('all'),
 });
 
 export type ContractCoverageQuery = z.infer<typeof contractCoverageQuerySchema>;

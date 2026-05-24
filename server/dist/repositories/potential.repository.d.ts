@@ -1,3 +1,4 @@
+import type { PortfolioFilter } from './sales.repository.js';
 export type CrossSellOpportunity = {
     insuredName: string;
     insuredId: string;
@@ -43,5 +44,5 @@ export type SalesPotentialResponse = {
         }[];
     };
 };
-export declare function getSalesPotential(agentId: string): Promise<SalesPotentialResponse>;
+export declare function getSalesPotential(agentId: string, portfolioType?: PortfolioFilter): Promise<SalesPotentialResponse>;
 //# sourceMappingURL=potential.repository.d.ts.map

@@ -22,6 +22,7 @@ function toSalesTransaction(row) {
         id: row.id,
         agentId: row.agent_id,
         insuranceCompany: row.insurance_company,
+        portfolioType: row.portfolio_type ?? 'unknown',
         reportType: row.report_type,
         processingMonth: row.processing_month,
         productionMonth: row.production_month ?? null,
@@ -79,11 +80,11 @@ async function insertSalesTransactions(agentId, insuranceCompany, records) {
         const placeholders = [];
         const values = [];
         for (const r of chunk) {
-            placeholders.push('(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)');
-            values.push(uuid(), agentId, insuranceCompany, r.reportType, r.processingMonth, r.productionMonth ?? null, r.insuredName ?? null, r.insuredId ?? null, r.employerName ?? null, r.employerId ?? null, r.policyNumber ?? null, r.branch ?? null, r.subBranch ?? null, r.productName ?? null, r.fundType ?? null, r.planType ?? null, r.premium ?? null, r.commissionAmount, r.commissionRate ?? null, r.collectionFee ?? null, r.advanceAmount ?? null, r.advanceBalance ?? null, r.paymentAmount ?? null, r.amountBeforeVat ?? null, r.amountWithVat ?? null, r.accumulationBalance ?? null, r.transactionType ?? null);
+            placeholders.push('(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)');
+            values.push(uuid(), agentId, insuranceCompany, r.portfolioType ?? 'unknown', r.reportType, r.processingMonth, r.productionMonth ?? null, r.insuredName ?? null, r.insuredId ?? null, r.employerName ?? null, r.employerId ?? null, r.policyNumber ?? null, r.branch ?? null, r.subBranch ?? null, r.productName ?? null, r.fundType ?? null, r.planType ?? null, r.premium ?? null, r.commissionAmount, r.commissionRate ?? null, r.collectionFee ?? null, r.advanceAmount ?? null, r.advanceBalance ?? null, r.paymentAmount ?? null, r.amountBeforeVat ?? null, r.amountWithVat ?? null, r.accumulationBalance ?? null, r.transactionType ?? null);
         }
         const sql = `INSERT INTO sales_transactions
-      (id, agent_id, insurance_company, report_type, processing_month, production_month,
+      (id, agent_id, insurance_company, portfolio_type, report_type, processing_month, production_month,
        insured_name, insured_id, employer_name, employer_id, policy_number, branch,
        sub_branch, product_name, fund_type, plan_type, premium, commission_amount,
        commission_rate, collection_fee, advance_amount, advance_balance, payment_amount,
@@ -97,8 +98,8 @@ async function insertSalesTransactions(agentId, insuranceCompany, records) {
 /**
  * Get sales transactions for an agent, optionally filtered by processing_month.
  */
-async function getSalesTransactions(agentId, month) {
-    let sql = `SELECT id, agent_id, insurance_company, report_type, processing_month,
+async function getSalesTransactions(agentId, month, portfolioType = 'all') {
+    let sql = `SELECT id, agent_id, insurance_company, portfolio_type, report_type, processing_month,
                     production_month, insured_name, insured_id, employer_name, employer_id,
                     policy_number, branch, sub_branch, product_name, fund_type, plan_type,
                     premium, commission_amount, commission_rate, collection_fee,
@@ -112,6 +113,10 @@ async function getSalesTransactions(agentId, month) {
         sql += ' AND processing_month = ?';
         params.push(month);
     }
+    if (portfolioType !== 'all') {
+        sql += ' AND portfolio_type = ?';
+        params.push(portfolioType);
+    }
     sql += ' ORDER BY processing_month DESC, created_at DESC LIMIT 10000';
     const [rows] = await database_js_1.default.query(sql, params);
     return rows.map(toSalesTransaction);
@@ -120,9 +125,7 @@ async function getSalesTransactions(agentId, month) {
  * Search clients (unique insured_id + insured_name) for an agent.
  * Optionally filter by name or ID search term.
  */
-async function searchClients(agentId, search, limit = 50) {
-    // Calculate per-client: latest month commission, monthly average, and total
-    // Only policy-level report types to avoid double-counting aggregates
+async function searchClients(agentId, search, limit = 50, portfolioType = 'all') {
     let sql = `
     SELECT insured_name,
            MAX(insured_id) AS insured_id,
@@ -147,6 +150,10 @@ async function searchClients(agentId, search, limit = 50) {
         const term = `%${search.trim()}%`;
         sql += ' AND (s.insured_name LIKE ? OR s.insured_id LIKE ?)';
         params.push(term, term);
+    }
+    if (portfolioType !== 'all') {
+        sql += ' AND s.portfolio_type = ?';
+        params.push(portfolioType);
     }
     sql += ' GROUP BY s.insured_name ORDER BY last_month DESC, total_commission DESC LIMIT ?';
     params.push(limit);
@@ -190,27 +197,26 @@ async function getClientTransactions(agentId, clientId) {
         reportType: r.report_type,
     }));
 }
-async function getPortfolioAnalysis(agentId) {
-    // 1. Overview — only policy-level report types to avoid double-counting aggregates
+async function getPortfolioAnalysis(agentId, portfolioType = 'all') {
+    const portfolioFilter = portfolioType !== 'all' ? ` AND portfolio_type = '${portfolioType}'` : '';
     const [overviewRows] = await database_js_1.default.query(`SELECT
-       (SELECT COUNT(DISTINCT insured_name) FROM sales_transactions WHERE agent_id = ? AND report_type IN ${POLICY_REPORT_TYPES} AND insured_name IS NOT NULL AND insured_name != '') AS total_clients,
+       (SELECT COUNT(DISTINCT insured_name) FROM sales_transactions WHERE agent_id = ? AND report_type IN ${POLICY_REPORT_TYPES} AND insured_name IS NOT NULL AND insured_name != ''${portfolioFilter}) AS total_clients,
        ROUND(SUM(commission_amount), 2) AS total_commission,
        COUNT(DISTINCT processing_month) AS months_tracked
      FROM sales_transactions
-     WHERE agent_id = ? AND report_type IN ${POLICY_REPORT_TYPES}`, [agentId, agentId]);
+     WHERE agent_id = ? AND report_type IN ${POLICY_REPORT_TYPES}${portfolioFilter}`, [agentId, agentId]);
     const totalClients = Number(overviewRows[0]?.total_clients) || 0;
     const totalCommission = Number(overviewRows[0]?.total_commission) || 0;
     const monthsTracked = Number(overviewRows[0]?.months_tracked) || 1;
     const monthlyAverage = Math.round(totalCommission / monthsTracked);
     const avgCommissionPerClient = totalClients > 0 ? Math.round(totalCommission / totalClients) : 0;
-    // 2. By branch
     const [branchRows] = await database_js_1.default.query(`SELECT COALESCE(branch, 'אחר') AS branch,
             ROUND(SUM(commission_amount), 2) AS total,
             COUNT(DISTINCT insured_name) AS clients
      FROM sales_transactions
      WHERE agent_id = ?
        AND report_type IN ${POLICY_REPORT_TYPES}
-       AND insured_name IS NOT NULL AND insured_name != ''
+       AND insured_name IS NOT NULL AND insured_name != ''${portfolioFilter}
      GROUP BY COALESCE(branch, 'אחר')
      ORDER BY total DESC`, [agentId]);
     const byBranch = branchRows.map((r) => ({
@@ -219,7 +225,6 @@ async function getPortfolioAnalysis(agentId) {
         clients: Number(r.clients),
         pct: totalCommission > 0 ? Math.round((Number(r.total) / totalCommission) * 100) : 0,
     }));
-    // 3. Top clients
     const [topRows] = await database_js_1.default.query(`SELECT insured_name AS name,
             MAX(insured_id) AS id,
             ROUND(SUM(commission_amount), 2) AS total,
@@ -229,21 +234,19 @@ async function getPortfolioAnalysis(agentId) {
      FROM sales_transactions
      WHERE agent_id = ?
        AND report_type IN ${POLICY_REPORT_TYPES}
-       AND insured_name IS NOT NULL AND insured_name != ''
+       AND insured_name IS NOT NULL AND insured_name != ''${portfolioFilter}
      GROUP BY insured_name
      ORDER BY total DESC
      LIMIT 20`, [agentId]);
-    // For trend calculation, get last two months per client
     const [trendRows] = await database_js_1.default.query(`SELECT insured_name,
             processing_month,
             ROUND(SUM(commission_amount), 2) AS month_total
      FROM sales_transactions
      WHERE agent_id = ?
        AND report_type IN ${POLICY_REPORT_TYPES}
-       AND insured_name IS NOT NULL AND insured_name != ''
+       AND insured_name IS NOT NULL AND insured_name != ''${portfolioFilter}
      GROUP BY insured_name, processing_month
      ORDER BY insured_name, processing_month DESC`, [agentId]);
-    // Build trend map: client -> [latest, previous]
     const trendMap = new Map();
     for (const r of trendRows) {
         const name = r.insured_name;
@@ -274,12 +277,11 @@ async function getPortfolioAnalysis(agentId) {
             trend,
         };
     });
-    // 4. Monthly trend — policy-level records only
     const [monthlyRows] = await database_js_1.default.query(`SELECT processing_month AS month,
             ROUND(SUM(commission_amount), 2) AS total,
             COUNT(DISTINCT CASE WHEN insured_name IS NOT NULL AND insured_name != '' THEN insured_name END) AS clients
      FROM sales_transactions
-     WHERE agent_id = ? AND report_type IN ${POLICY_REPORT_TYPES}
+     WHERE agent_id = ? AND report_type IN ${POLICY_REPORT_TYPES}${portfolioFilter}
      GROUP BY processing_month
      ORDER BY processing_month ASC`, [agentId]);
     const monthlyTrend = monthlyRows.map((r) => ({
@@ -287,14 +289,11 @@ async function getPortfolioAnalysis(agentId) {
         total: Number(r.total),
         clients: Number(r.clients),
     }));
-    // 5. Concentration (from topClients sorted by total desc)
-    const allClientTotals = topRows.map((r) => Number(r.total));
-    // We need all clients for concentration, not just top 20
     const [allTotalsRows] = await database_js_1.default.query(`SELECT ROUND(SUM(commission_amount), 2) AS total
      FROM sales_transactions
      WHERE agent_id = ?
        AND report_type IN ${POLICY_REPORT_TYPES}
-       AND insured_name IS NOT NULL AND insured_name != ''
+       AND insured_name IS NOT NULL AND insured_name != ''${portfolioFilter}
      GROUP BY insured_name
      ORDER BY total DESC`, [agentId]);
     const allTotals = allTotalsRows.map((r) => Number(r.total));
@@ -310,17 +309,15 @@ async function getPortfolioAnalysis(agentId) {
         top10Pct: topPct(10),
         top20Pct: topPct(20),
     };
-    // 6. At risk — clients whose latest month < previous month by 20%+
     const atRisk = [];
     for (const [name, arr] of trendMap) {
         if (arr.length >= 2 && arr[1] > 0) {
             const dropPct = Math.round(((arr[1] - arr[0]) / arr[1]) * 100);
             if (dropPct >= 20) {
-                // Find lastMonth for this client
                 const clientTrend = trendRows.find((r) => r.insured_name === name);
                 atRisk.push({
                     name,
-                    id: '', // will be filled below
+                    id: '',
                     lastAmount: arr[0],
                     prevAmount: arr[1],
                     dropPct,
@@ -329,22 +326,19 @@ async function getPortfolioAnalysis(agentId) {
             }
         }
     }
-    // Fill IDs for at-risk clients
     if (atRisk.length > 0) {
         const namesForId = atRisk.map((c) => c.name);
         const [idRows] = await database_js_1.default.query(`SELECT insured_name, MAX(insured_id) AS insured_id
        FROM sales_transactions
-       WHERE agent_id = ? AND report_type IN ${POLICY_REPORT_TYPES} AND insured_name IN (${namesForId.map(() => '?').join(',')})
+       WHERE agent_id = ? AND report_type IN ${POLICY_REPORT_TYPES} AND insured_name IN (${namesForId.map(() => '?').join(',')})${portfolioFilter}
        GROUP BY insured_name`, [agentId, ...namesForId]);
         const idMap = new Map(idRows.map((r) => [r.insured_name, r.insured_id || '']));
         for (const c of atRisk) {
             c.id = idMap.get(c.name) || '';
         }
     }
-    // Sort at risk by drop pct desc, limit 20
     atRisk.sort((a, b) => b.dropPct - a.dropPct);
     atRisk.splice(20);
-    // 7. New clients — first appeared in the latest month
     const latestMonth = monthlyTrend.length > 0 ? monthlyTrend[monthlyTrend.length - 1].month : null;
     let newClients = [];
     if (latestMonth) {
@@ -355,7 +349,7 @@ async function getPortfolioAnalysis(agentId) {
        FROM sales_transactions
        WHERE agent_id = ?
          AND report_type IN ${POLICY_REPORT_TYPES}
-         AND insured_name IS NOT NULL AND insured_name != ''
+         AND insured_name IS NOT NULL AND insured_name != ''${portfolioFilter}
        GROUP BY insured_name
        HAVING MIN(processing_month) = ?
        ORDER BY total DESC
@@ -397,17 +391,21 @@ function toSalesTransactionWithContract(row) {
  * Pagination: limit/offset apply to the filtered result set.
  */
 async function getSalesWithContractStatus(agentId, opts = {}) {
-    const { month, limit = 500, offset = 0 } = opts;
+    const { month, limit = 500, offset = 0, portfolioType = 'all' } = opts;
     const params = [agentId];
-    let monthFilter = '';
+    let extraFilters = '';
     if (month) {
-        monthFilter = ' AND s.processing_month = ?';
+        extraFilters += ' AND s.processing_month = ?';
         params.push(month);
+    }
+    if (portfolioType !== 'all') {
+        extraFilters += ' AND s.portfolio_type = ?';
+        params.push(portfolioType);
     }
     params.push(limit, offset);
     const sql = `
     SELECT
-      s.id, s.agent_id, s.insurance_company, s.report_type,
+      s.id, s.agent_id, s.insurance_company, s.portfolio_type, s.report_type,
       s.processing_month, s.production_month,
       s.insured_name, s.insured_id, s.employer_name, s.employer_id,
       s.policy_number, s.branch, s.sub_branch, s.product_name,
@@ -424,7 +422,7 @@ async function getSalesWithContractStatus(agentId, opts = {}) {
       ON  aar.agent_id = s.agent_id
       AND aar.company  = s.insurance_company
       AND aar.product  = s.branch
-    WHERE s.agent_id = ?${monthFilter}
+    WHERE s.agent_id = ?${extraFilters}
     ORDER BY s.processing_month DESC, s.created_at DESC
     LIMIT ? OFFSET ?`;
     const [rows] = await database_js_1.default.query(sql, params);
@@ -434,11 +432,16 @@ async function getSalesWithContractStatus(agentId, opts = {}) {
  * Aggregated coverage summary for the agent, optionally scoped to a month.
  */
 async function getContractCoverageSummary(agentId, opts = {}) {
+    const { month, portfolioType = 'all' } = opts;
     const params = [agentId];
-    let monthFilter = '';
-    if (opts.month) {
-        monthFilter = ' AND s.processing_month = ?';
-        params.push(opts.month);
+    let extraFilters = '';
+    if (month) {
+        extraFilters += ' AND s.processing_month = ?';
+        params.push(month);
+    }
+    if (portfolioType !== 'all') {
+        extraFilters += ' AND s.portfolio_type = ?';
+        params.push(portfolioType);
     }
     const sql = `
     SELECT
@@ -451,7 +454,7 @@ async function getContractCoverageSummary(agentId, opts = {}) {
       ON  aar.agent_id = s.agent_id
       AND aar.company  = s.insurance_company
       AND aar.product  = s.branch
-    WHERE s.agent_id = ?${monthFilter}`;
+    WHERE s.agent_id = ?${extraFilters}`;
     const [rows] = await database_js_1.default.query(sql, params);
     const r = rows[0];
     return {
@@ -495,14 +498,19 @@ async function assignInsuranceCompany(agentId, insuredId, policyNumber, insuranc
     const [result] = await database_js_1.default.query(sql, params);
     return { updated: result.affectedRows };
 }
-async function getMonthlySalarySummary(agentId) {
-    const [rows] = await database_js_1.default.query(`SELECT processing_month AS month,
+async function getMonthlySalarySummary(agentId, portfolioType = 'all') {
+    let sql = `SELECT processing_month AS month,
             ROUND(SUM(commission_amount), 2) AS total_commission,
             COUNT(*) AS record_count
      FROM sales_transactions
-     WHERE agent_id = ?
-     GROUP BY processing_month
-     ORDER BY processing_month DESC`, [agentId]);
+     WHERE agent_id = ?`;
+    const params = [agentId];
+    if (portfolioType !== 'all') {
+        sql += ' AND portfolio_type = ?';
+        params.push(portfolioType);
+    }
+    sql += ' GROUP BY processing_month ORDER BY processing_month DESC';
+    const [rows] = await database_js_1.default.query(sql, params);
     return rows.map((r) => ({
         month: r.month,
         totalCommission: Number(r.total_commission),

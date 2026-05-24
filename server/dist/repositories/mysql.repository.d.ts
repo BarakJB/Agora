@@ -182,36 +182,38 @@ export interface CommissionRuleRecord {
     isActive: boolean;
 }
 export declare function getCommissionRules(insuranceCompanyId: string, productType?: string): Promise<CommissionRuleRecord[]>;
+export type PortfolioType = 'personal' | 'partners';
 export interface AgentCompanyNumber {
     id: string;
     agentId: string;
     insuranceCompanyId: string;
     insuranceCompanyName: string;
     companyAgentNumber: string;
+    portfolioType: PortfolioType;
     createdAt: string;
     updatedAt: string;
 }
-/**
- * Save or update the agent number for a specific agent at a specific company.
- * Uses INSERT ... ON DUPLICATE KEY UPDATE for idempotency.
- */
-export declare function upsertAgentCompanyNumber(agentId: string, insuranceCompanyId: string, companyAgentNumber: string): Promise<void>;
-/**
- * Get the registered agent number for a specific agent at a specific company.
- * Returns null if no mapping exists yet.
- */
-export declare function getRegisteredAgentNumber(agentId: string, insuranceCompanyId: string): Promise<string | null>;
-/**
- * Resolve which agent owns a given agent number at a specific company.
- * Used to validate that an uploaded file belongs to the authenticated agent.
- */
+export declare function upsertAgentCompanyNumber(agentId: string, insuranceCompanyId: string, companyAgentNumber: string, portfolioType?: PortfolioType): Promise<void>;
+export declare function deleteAgentCompanyNumber(agentId: string, insuranceCompanyId: string, portfolioType: PortfolioType): Promise<void>;
+export declare function getRegisteredAgentNumber(agentId: string, insuranceCompanyId: string): Promise<{
+    companyAgentNumber: string;
+    portfolioType: PortfolioType;
+} | null>;
+export declare function getAgentNumbersByCompany(agentId: string, insuranceCompanyId: string): Promise<{
+    personal?: string;
+    partners?: string;
+}>;
+export declare function getAgentCompanyNumbersWithPortfolio(agentId: string): Promise<Array<{
+    insuranceCompanyId: string;
+    insuranceCompanyName: string;
+    companyAgentNumber: string;
+    portfolioType: PortfolioType;
+}>>;
+export declare function resolvePortfolioByAgentNumber(agentId: string, insuranceCompanyId: string, agentNumberInFile: string): Promise<PortfolioType | null>;
 export declare function getAgentByCompanyNumber(insuranceCompanyId: string, companyAgentNumber: string): Promise<{
     agentId: string;
     taxId: string;
 } | null>;
-/**
- * Get all company numbers registered for a given agent.
- */
 export declare function getAgentCompanyNumbers(agentId: string): Promise<AgentCompanyNumber[]>;
 export interface AgentCommissionRate {
     id: string;

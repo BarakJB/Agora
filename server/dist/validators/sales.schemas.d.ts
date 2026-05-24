@@ -5,15 +5,18 @@ export declare const contractCoverageQuerySchema: z.ZodObject<{
 } & {
     month: z.ZodOptional<z.ZodString>;
     detailed: z.ZodDefault<z.ZodEffects<z.ZodEnum<["true", "false"]>, boolean, "true" | "false">>;
+    portfolioType: z.ZodDefault<z.ZodEnum<["personal", "partners", "all"]>>;
 }, "strip", z.ZodTypeAny, {
     page: number;
     limit: number;
+    portfolioType: "personal" | "partners" | "all";
     detailed: boolean;
     month?: string | undefined;
 }, {
     page?: number | undefined;
     limit?: number | undefined;
     month?: string | undefined;
+    portfolioType?: "personal" | "partners" | "all" | undefined;
     detailed?: "true" | "false" | undefined;
 }>;
 export type ContractCoverageQuery = z.infer<typeof contractCoverageQuerySchema>;
