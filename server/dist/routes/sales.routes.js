@@ -106,6 +106,25 @@ exports.salesRouter.get('/summary', async (req, res, next) => {
     }
 });
 /**
+ * GET /api/v1/sales/portfolio-types
+ * Auth: required
+ * Returns distinct portfolio types that have data in sales_transactions for the agent.
+ */
+exports.salesRouter.get('/portfolio-types', async (req, res, next) => {
+    try {
+        const agentId = (res.locals.sub || res.locals.agentId);
+        const types = await (0, sales_repository_js_1.getActivePortfolioTypes)(agentId);
+        res.json({
+            data: { types },
+            error: null,
+            meta: null,
+        });
+    }
+    catch (err) {
+        next(err);
+    }
+});
+/**
  * GET /api/v1/sales/portfolio
  * Auth: required
  * Returns portfolio analysis data for the authenticated agent.

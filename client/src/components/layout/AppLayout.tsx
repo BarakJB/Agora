@@ -9,12 +9,19 @@ export default function AppLayout() {
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
   const isAuthenticated = useAuthStore((s) => s.isAuthenticated);
   const checkMultiplePortfolios = usePortfolioFilterStore((s) => s.checkMultiplePortfolios);
+  const lastSalesUploadAt = usePortfolioFilterStore((s) => s.lastSalesUploadAt);
 
   useEffect(() => {
     if (isAuthenticated) {
       checkMultiplePortfolios();
     }
   }, [isAuthenticated, checkMultiplePortfolios]);
+
+  useEffect(() => {
+    if (lastSalesUploadAt > 0) {
+      checkMultiplePortfolios();
+    }
+  }, [lastSalesUploadAt, checkMultiplePortfolios]);
 
   return (
     <div className="min-h-screen bg-surface">

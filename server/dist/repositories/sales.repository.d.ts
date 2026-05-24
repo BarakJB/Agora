@@ -198,5 +198,6 @@ export declare function getContractCoverageSummary(agentId: string, opts?: {
 export declare function assignInsuranceCompany(agentId: string, insuredId: string, policyNumber: string, insuranceCompany: string): Promise<{
     updated: number;
 }>;
+export declare function getActivePortfolioTypes(agentId: string): Promise<Array<'personal' | 'partners'>>;
 export declare function getMonthlySalarySummary(agentId: string, portfolioType?: PortfolioFilter): Promise<MonthlySalarySummary[]>;
 //# sourceMappingURL=sales.repository.d.ts.map

@@ -10,6 +10,7 @@ import {
   getSalesWithContractStatus,
   getContractCoverageSummary,
   assignInsuranceCompany,
+  getActivePortfolioTypes,
   type SalesTransactionInput,
   type PortfolioFilter,
 } from '../repositories/sales.repository.js';
@@ -128,6 +129,26 @@ salesRouter.get('/summary', async (req, res, next) => {
       data: summary,
       error: null,
       meta: { months: summary.length },
+    });
+  } catch (err) {
+    next(err);
+  }
+});
+
+/**
+ * GET /api/v1/sales/portfolio-types
+ * Auth: required
+ * Returns distinct portfolio types that have data in sales_transactions for the agent.
+ */
+salesRouter.get('/portfolio-types', async (req, res, next) => {
+  try {
+    const agentId = (res.locals.sub || res.locals.agentId) as string;
+    const types = await getActivePortfolioTypes(agentId);
+
+    res.json({
+      data: { types },
+      error: null,
+      meta: null,
     });
   } catch (err) {
     next(err);

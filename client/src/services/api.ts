@@ -478,6 +478,10 @@ export const salesApi = {
       body: JSON.stringify(payload),
     });
   },
+
+  getPortfolioTypes() {
+    return request<{ types: Array<'personal' | 'partners'> }>('/sales/portfolio-types');
+  },
 };
 
 // ─── Agent Numbers ───────────────────────────────────────────

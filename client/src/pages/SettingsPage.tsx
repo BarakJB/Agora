@@ -3,7 +3,6 @@ import Icon from '../components/ui/Icon';
 import CompanyLogo from '../components/common/CompanyLogo';
 import { useAuthStore } from '../store/authStore';
 import { useDataStore } from '../store/dataStore';
-import { usePortfolioFilterStore } from '../store/portfolioFilterStore';
 import CommissionRatesEditor from '../components/CommissionRatesEditor';
 import * as api from '../services/api';
 
@@ -51,7 +50,6 @@ function buildInitialMap(): AgentNumbersMap {
 export default function SettingsPage() {
   const profile = useAuthStore((s) => s.profile);
   const dashboard = useDataStore((s) => s.dashboard);
-  const checkMultiplePortfolios = usePortfolioFilterStore((s) => s.checkMultiplePortfolios);
   const displayName = profile?.name || 'משתמש חדש';
   const displayRole = profile?.role || 'סוכן';
   const displayLicense = profile?.licenseNumber || '---';
@@ -135,7 +133,6 @@ export default function SettingsPage() {
       return;
     }
     setFieldState(companyId, pt, { saving: false });
-    await checkMultiplePortfolios();
   }
 
   async function handleDelete(companyId: string, pt: PortfolioType) {
@@ -143,7 +140,6 @@ export default function SettingsPage() {
     try {
       await api.deleteAgentNumber({ insuranceCompanyId: companyId, portfolioType: pt });
       setFieldState(companyId, pt, { deleting: false, value: '' });
-      await checkMultiplePortfolios();
     } catch (err) {
       const msg = err instanceof api.ApiError ? (err.serverError ?? 'שגיאה במחיקה') : 'שגיאה במחיקה';
       setFieldState(companyId, pt, { deleting: false, error: msg });

@@ -30,9 +30,11 @@ const REPORT_TYPE_HE: Record<string, string> = {
   branch_distribution: 'היקף',
 };
 
-const COMPANIES = [
-  'הראל', 'מגדל', 'מנורה מבטחים', 'הפניקס', 'כלל ביטוח',
-  'הכשרה', 'אלטשולר שחם', 'מיטב דש', 'פסגות', 'אנליסט',
+const COMPANIES: Array<{ code: 'harel' | 'menora' | 'phoenix' | 'analyst'; name: string }> = [
+  { code: 'harel', name: 'הראל' },
+  { code: 'phoenix', name: 'הפניקס' },
+  { code: 'menora', name: 'מנורה מבטחים' },
+  { code: 'analyst', name: 'אנליסט' },
 ];
 
 /* ─── Main Component ─── */
@@ -762,6 +764,7 @@ function UploadModal({ open, onComplete, onClose }: {
   onComplete: () => void;
   onClose: () => void;
 }) {
+  const notifySalesUploaded = usePortfolioFilterStore((s) => s.notifySalesUploaded);
   const [uploading, setUploading] = useState(false);
   const [uploadedFiles, setUploadedFiles] = useState<UploadedFile[]>([]);
   const [error, setError] = useState<string | null>(null);
@@ -811,6 +814,7 @@ function UploadModal({ open, onComplete, onClose }: {
       const token = localStorage.getItem('agora-token');
       const fd = new FormData();
       fd.append('file', file);
+      fd.append('insuranceCompany', selectedCompany);
 
       const res = await fetch('/api/v1/uploads/parse', {
         method: 'POST',
@@ -865,6 +869,7 @@ function UploadModal({ open, onComplete, onClose }: {
           const saveResult = await api.saveSalesTransactions(records, company);
           const saved = saveResult.data?.inserted || 0;
           setUploadedFiles((prev) => [...prev, { name: file.name, reportType: result.reportType, records: saved, status: 'success' }]);
+          notifySalesUploaded();
         } catch (e) {
           setUploadedFiles((prev) => [...prev, { name: file.name, reportType: result.reportType, records: 0, status: 'error', error: String(e) }]);
         }
@@ -906,7 +911,7 @@ function UploadModal({ open, onComplete, onClose }: {
             >
               <option value="">בחר חברה...</option>
               {COMPANIES.map((c) => (
-                <option key={c} value={c}>{c}</option>
+                <option key={c.code} value={c.code}>{c.name}</option>
               ))}
             </select>
           </div>

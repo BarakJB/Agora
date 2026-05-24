@@ -807,6 +807,18 @@ export async function assignInsuranceCompany(
   return { updated: result.affectedRows };
 }
 
+export async function getActivePortfolioTypes(
+  agentId: string,
+): Promise<Array<'personal' | 'partners'>> {
+  const [rows] = await pool.query<RowDataPacket[]>(
+    `SELECT DISTINCT portfolio_type
+     FROM sales_transactions
+     WHERE agent_id = ? AND portfolio_type IN ('personal', 'partners')`,
+    [agentId],
+  );
+  return rows.map((r) => r.portfolio_type as 'personal' | 'partners');
+}
+
 export async function getMonthlySalarySummary(
   agentId: string,
   portfolioType: PortfolioFilter = 'all',

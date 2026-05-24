@@ -11,6 +11,7 @@ exports.getPortfolioAnalysis = getPortfolioAnalysis;
 exports.getSalesWithContractStatus = getSalesWithContractStatus;
 exports.getContractCoverageSummary = getContractCoverageSummary;
 exports.assignInsuranceCompany = assignInsuranceCompany;
+exports.getActivePortfolioTypes = getActivePortfolioTypes;
 exports.getMonthlySalarySummary = getMonthlySalarySummary;
 const database_js_1 = __importDefault(require("../config/database.js"));
 // Only these report types represent individual policy-level records.
@@ -497,6 +498,12 @@ async function assignInsuranceCompany(agentId, insuredId, policyNumber, insuranc
     }
     const [result] = await database_js_1.default.query(sql, params);
     return { updated: result.affectedRows };
+}
+async function getActivePortfolioTypes(agentId) {
+    const [rows] = await database_js_1.default.query(`SELECT DISTINCT portfolio_type
+     FROM sales_transactions
+     WHERE agent_id = ? AND portfolio_type IN ('personal', 'partners')`, [agentId]);
+    return rows.map((r) => r.portfolio_type);
 }
 async function getMonthlySalarySummary(agentId, portfolioType = 'all') {
     let sql = `SELECT processing_month AS month,

@@ -1,14 +1,16 @@
 import { create } from 'zustand';
 import { persist } from 'zustand/middleware';
-import { getAgentNumbers } from '../services/api';
+import { salesApi } from '../services/api';
 
 export type PortfolioFilter = 'all' | 'personal' | 'partners';
 
 interface PortfolioFilterState {
   portfolioFilter: PortfolioFilter;
   hasMultiplePortfolios: boolean;
+  lastSalesUploadAt: number;
   setPortfolioFilter: (filter: PortfolioFilter) => void;
   checkMultiplePortfolios: () => Promise<void>;
+  notifySalesUploaded: () => void;
 }
 
 export const usePortfolioFilterStore = create<PortfolioFilterState>()(
@@ -16,29 +18,21 @@ export const usePortfolioFilterStore = create<PortfolioFilterState>()(
     (set) => ({
       portfolioFilter: 'all',
       hasMultiplePortfolios: false,
+      lastSalesUploadAt: 0,
 
       setPortfolioFilter: (filter) => set({ portfolioFilter: filter }),
 
+      notifySalesUploaded: () => set({ lastSalesUploadAt: Date.now() }),
+
       checkMultiplePortfolios: async () => {
         try {
-          const res = await getAgentNumbers();
-          const numbers = res.data ?? [];
-
-          const grouped: Record<string, Set<'personal' | 'partners'>> = {};
-          for (const n of numbers) {
-            if (!grouped[n.insuranceCompanyId]) {
-              grouped[n.insuranceCompanyId] = new Set();
-            }
-            grouped[n.insuranceCompanyId].add(n.portfolioType);
-          }
-
-          const anyCompanyWithBoth = Object.values(grouped).some(
-            (types) => types.has('personal') && types.has('partners'),
-          );
+          const res = await salesApi.getPortfolioTypes();
+          const types = res.data?.types ?? [];
+          const hasBoth = types.includes('personal') && types.includes('partners');
 
           set((state) => ({
-            hasMultiplePortfolios: anyCompanyWithBoth,
-            portfolioFilter: anyCompanyWithBoth ? state.portfolioFilter : 'all',
+            hasMultiplePortfolios: hasBoth,
+            portfolioFilter: hasBoth ? state.portfolioFilter : 'all',
           }));
         } catch {
           // silent — keep existing state

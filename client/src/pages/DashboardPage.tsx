@@ -1071,6 +1071,7 @@ function UploadModal({ open, mode, onComplete, onClose }: {
   onComplete: () => void;
   onClose: () => void;
 }) {
+  const notifySalesUploaded = usePortfolioFilterStore((s) => s.notifySalesUploaded);
   const [uploading, setUploading] = useState(false);
   const [uploadedFiles, setUploadedFiles] = useState<UploadedFile[]>([]);
   const [error, setError] = useState<string | null>(null);
@@ -1187,6 +1188,7 @@ function UploadModal({ open, mode, onComplete, onClose }: {
           const saveResult = await api.saveSalesTransactions(records, company);
           const saved = saveResult.data?.inserted || 0;
           setUploadedFiles(prev => [...prev, { name: file.name, reportType: result.reportType, records: saved, status: 'success' }]);
+          notifySalesUploaded();
         } catch (e) {
           setUploadedFiles(prev => [...prev, { name: file.name, reportType: result.reportType, records: 0, status: 'error', error: String(e) }]);
         }
