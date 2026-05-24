@@ -419,9 +419,33 @@ export function getContractCoverageDetailed(month?: string) {
 // ─── Sales Potential ─────────────────────────────────────────
 import type { SalesPotentialData } from '../types/potential';
 
+export type InsuranceCompanyCode =
+  | 'harel'
+  | 'menora'
+  | 'phoenix'
+  | 'analyst'
+  | 'migdal'
+  | 'clal'
+  | 'hachshara'
+  | 'altshuler'
+  | 'meitav'
+  | 'psagot'
+  | 'yashir';
+
 export const salesApi = {
   getSalesPotential() {
     return request<SalesPotentialData>('/sales/potential');
+  },
+
+  assignCompany(payload: {
+    insuredId?: string;
+    policyNumber?: string;
+    insuranceCompany: InsuranceCompanyCode;
+  }) {
+    return request<{ updated: number }>('/sales/assign-company', {
+      method: 'PATCH',
+      body: JSON.stringify(payload),
+    });
   },
 };
 

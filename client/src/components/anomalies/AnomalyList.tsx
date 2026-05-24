@@ -7,6 +7,7 @@ interface AnomalyListProps {
   anomalies: Anomaly[];
   emptyMessage?: string;
   onAnomalyClick?: (anomaly: Anomaly) => void;
+  onAssignmentDone?: () => void;
 }
 
 const SEVERITY_ORDER: Record<Anomaly['severity'], number> = { high: 0, medium: 1, low: 2 };
@@ -17,7 +18,7 @@ const SEVERITY_COUNTER_COLOR: Record<Anomaly['severity'], string> = {
   low: 'bg-[#CA8A04] text-white',
 };
 
-export default function AnomalyList({ anomalies, emptyMessage, onAnomalyClick }: AnomalyListProps) {
+export default function AnomalyList({ anomalies, emptyMessage, onAnomalyClick, onAssignmentDone }: AnomalyListProps) {
   if (anomalies.length === 0) {
     return (
       <div className="bg-surface-container-lowest rounded-lg py-14 flex flex-col items-center gap-4 border border-outline-variant/20">
@@ -57,6 +58,7 @@ export default function AnomalyList({ anomalies, emptyMessage, onAnomalyClick }:
                 key={anomalyKey(a, i)}
                 anomaly={a}
                 onClick={onAnomalyClick ? () => onAnomalyClick(a) : undefined}
+                onAssignmentDone={onAssignmentDone}
               />
             ))}
           </div>

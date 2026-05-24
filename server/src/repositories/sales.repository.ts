@@ -746,6 +746,47 @@ export async function getContractCoverageSummary(
   };
 }
 
+export async function assignInsuranceCompany(
+  agentId: string,
+  insuredId: string,
+  policyNumber: string,
+  insuranceCompany: string,
+): Promise<{ updated: number }> {
+  if (!insuredId && !policyNumber) {
+    throw new Error('at least one of insuredId or policyNumber is required');
+  }
+
+  let sql: string;
+  const params: unknown[] = [insuranceCompany, agentId];
+
+  if (insuredId && policyNumber) {
+    sql = `UPDATE sales_transactions
+           SET insurance_company = ?
+           WHERE agent_id = ?
+             AND (insurance_company IS NULL OR insurance_company = '')
+             AND insured_id = ?
+             AND policy_number = ?`;
+    params.push(insuredId, policyNumber);
+  } else if (insuredId) {
+    sql = `UPDATE sales_transactions
+           SET insurance_company = ?
+           WHERE agent_id = ?
+             AND (insurance_company IS NULL OR insurance_company = '')
+             AND insured_id = ?`;
+    params.push(insuredId);
+  } else {
+    sql = `UPDATE sales_transactions
+           SET insurance_company = ?
+           WHERE agent_id = ?
+             AND (insurance_company IS NULL OR insurance_company = '')
+             AND policy_number = ?`;
+    params.push(policyNumber);
+  }
+
+  const [result] = await pool.query<ResultSetHeader>(sql, params);
+  return { updated: result.affectedRows };
+}
+
 export async function getMonthlySalarySummary(
   agentId: string,
 ): Promise<MonthlySalarySummary[]> {

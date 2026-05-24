@@ -8,11 +8,17 @@ import {
   getPortfolioAnalysis,
   getSalesWithContractStatus,
   getContractCoverageSummary,
+  assignInsuranceCompany,
   type SalesTransactionInput,
 } from '../repositories/sales.repository.js';
 import { getSalesPotential } from '../repositories/potential.repository.js';
 import { validate } from '../middleware/validate.js';
-import { contractCoverageQuerySchema } from '../validators/sales.schemas.js';
+import {
+  contractCoverageQuerySchema,
+  assignCompanySchema,
+  INSURANCE_COMPANY_MAP,
+  type AssignCompanyBody,
+} from '../validators/sales.schemas.js';
 
 export const salesRouter = Router();
 
@@ -219,6 +225,34 @@ salesRouter.get('/potential', async (req, res, next) => {
     next(err);
   }
 });
+
+/**
+ * PATCH /api/v1/sales/assign-company
+ * Auth: required
+ * Assigns an insurance company to transactions where the field is missing.
+ */
+salesRouter.patch(
+  '/assign-company',
+  validate({ body: assignCompanySchema }),
+  async (req, res, next) => {
+    try {
+      const agentId = (res.locals.sub || res.locals.agentId) as string;
+      const { insuredId, policyNumber, insuranceCompany } = req.body as AssignCompanyBody;
+
+      const displayName = INSURANCE_COMPANY_MAP[insuranceCompany];
+      const result = await assignInsuranceCompany(
+        agentId,
+        insuredId ?? '',
+        policyNumber ?? '',
+        displayName,
+      );
+
+      res.json({ data: result, error: null, meta: null });
+    } catch (err) {
+      next(err);
+    }
+  },
+);
 
 /**
  * GET /api/v1/sales/client/:clientId

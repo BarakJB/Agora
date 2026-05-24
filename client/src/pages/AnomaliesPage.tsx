@@ -36,6 +36,11 @@ export default function AnomaliesPage() {
   const [selectedMonth, setSelectedMonth] = useState<string>('all');
   const [severityFilter, setSeverityFilter] = useState<Anomaly['severity'] | 'all'>('all');
   const [typeFilter, setTypeFilter] = useState<Anomaly['type'] | 'all'>('all');
+  const [refreshKey, setRefreshKey] = useState(0);
+
+  function handleAssignmentDone() {
+    setRefreshKey((k) => k + 1);
+  }
 
   useEffect(() => {
     let cancelled = false;
@@ -57,7 +62,7 @@ export default function AnomaliesPage() {
     }
     load();
     return () => { cancelled = true; };
-  }, []);
+  }, [refreshKey]);
 
   const availableMonths = useMemo(() => {
     const months = new Set<string>();
@@ -222,6 +227,7 @@ export default function AnomaliesPage() {
       <AnomalyList
         anomalies={filtered}
         emptyMessage={allAnomalies.length === 0 ? 'טעינת נתונים מלאה מספיק לזיהוי חריגות' : 'אין חריגות התואמות את הסינון'}
+        onAssignmentDone={handleAssignmentDone}
       />
     </div>
   );

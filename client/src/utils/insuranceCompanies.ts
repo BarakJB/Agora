@@ -72,6 +72,42 @@ export const INSURANCE_COMPANY_REGISTRY: InsuranceCompanyMeta[] = [
     initials: 'בי',
     isSupported: false,
   },
+  {
+    code: 'hachshara',
+    hebrewName: 'הכשרה',
+    englishName: 'Hachshara',
+    hasLogo: false,
+    logoExt: null,
+    initials: 'הכ',
+    isSupported: false,
+  },
+  {
+    code: 'altshuler',
+    hebrewName: 'אלטשולר שחם',
+    englishName: 'Altshuler Shaham',
+    hasLogo: false,
+    logoExt: null,
+    initials: 'אש',
+    isSupported: false,
+  },
+  {
+    code: 'meitav',
+    hebrewName: 'מיטב דש',
+    englishName: 'Meitav Dash',
+    hasLogo: false,
+    logoExt: null,
+    initials: 'מד',
+    isSupported: false,
+  },
+  {
+    code: 'psagot',
+    hebrewName: 'פסגות',
+    englishName: 'Psagot',
+    hasLogo: false,
+    logoExt: null,
+    initials: 'פס',
+    isSupported: false,
+  },
 ];
 
 const NAME_TO_CODE: Record<string, string> = {
@@ -93,6 +129,16 @@ const NAME_TO_CODE: Record<string, string> = {
   'ביטוח ישיר': 'yashir',
   ישיר: 'yashir',
   yashir: 'yashir',
+  הכשרה: 'hachshara',
+  hachshara: 'hachshara',
+  'אלטשולר שחם': 'altshuler',
+  אלטשולר: 'altshuler',
+  altshuler: 'altshuler',
+  'מיטב דש': 'meitav',
+  מיטב: 'meitav',
+  meitav: 'meitav',
+  פסגות: 'psagot',
+  psagot: 'psagot',
 };
 
 const REGISTRY_BY_CODE = new Map<string, InsuranceCompanyMeta>(

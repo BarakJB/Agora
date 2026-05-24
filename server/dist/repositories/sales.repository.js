@@ -10,6 +10,7 @@ exports.getClientTransactions = getClientTransactions;
 exports.getPortfolioAnalysis = getPortfolioAnalysis;
 exports.getSalesWithContractStatus = getSalesWithContractStatus;
 exports.getContractCoverageSummary = getContractCoverageSummary;
+exports.assignInsuranceCompany = assignInsuranceCompany;
 exports.getMonthlySalarySummary = getMonthlySalarySummary;
 const database_js_1 = __importDefault(require("../config/database.js"));
 // Only these report types represent individual policy-level records.
@@ -457,6 +458,40 @@ async function getContractCoverageSummary(agentId, opts = {}) {
         coveredAmount: Number(r?.covered_amount) || 0,
         uncoveredAmount: Number(r?.uncovered_amount) || 0,
     };
+}
+async function assignInsuranceCompany(agentId, insuredId, policyNumber, insuranceCompany) {
+    if (!insuredId && !policyNumber) {
+        throw new Error('at least one of insuredId or policyNumber is required');
+    }
+    let sql;
+    const params = [insuranceCompany, agentId];
+    if (insuredId && policyNumber) {
+        sql = `UPDATE sales_transactions
+           SET insurance_company = ?
+           WHERE agent_id = ?
+             AND (insurance_company IS NULL OR insurance_company = '')
+             AND insured_id = ?
+             AND policy_number = ?`;
+        params.push(insuredId, policyNumber);
+    }
+    else if (insuredId) {
+        sql = `UPDATE sales_transactions
+           SET insurance_company = ?
+           WHERE agent_id = ?
+             AND (insurance_company IS NULL OR insurance_company = '')
+             AND insured_id = ?`;
+        params.push(insuredId);
+    }
+    else {
+        sql = `UPDATE sales_transactions
+           SET insurance_company = ?
+           WHERE agent_id = ?
+             AND (insurance_company IS NULL OR insurance_company = '')
+             AND policy_number = ?`;
+        params.push(policyNumber);
+    }
+    const [result] = await database_js_1.default.query(sql, params);
+    return { updated: result.affectedRows };
 }
 async function getMonthlySalarySummary(agentId) {
     const [rows] = await database_js_1.default.query(`SELECT processing_month AS month,

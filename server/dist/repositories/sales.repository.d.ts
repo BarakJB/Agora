@@ -188,5 +188,8 @@ export declare function getSalesWithContractStatus(agentId: string, opts?: {
 export declare function getContractCoverageSummary(agentId: string, opts?: {
     month?: string;
 }): Promise<ContractCoverageSummary>;
+export declare function assignInsuranceCompany(agentId: string, insuredId: string, policyNumber: string, insuranceCompany: string): Promise<{
+    updated: number;
+}>;
 export declare function getMonthlySalarySummary(agentId: string): Promise<MonthlySalarySummary[]>;
 //# sourceMappingURL=sales.repository.d.ts.map

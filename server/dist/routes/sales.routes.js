@@ -189,6 +189,23 @@ exports.salesRouter.get('/potential', async (req, res, next) => {
     }
 });
 /**
+ * PATCH /api/v1/sales/assign-company
+ * Auth: required
+ * Assigns an insurance company to transactions where the field is missing.
+ */
+exports.salesRouter.patch('/assign-company', (0, validate_js_1.validate)({ body: sales_schemas_js_1.assignCompanySchema }), async (req, res, next) => {
+    try {
+        const agentId = (res.locals.sub || res.locals.agentId);
+        const { insuredId, policyNumber, insuranceCompany } = req.body;
+        const displayName = sales_schemas_js_1.INSURANCE_COMPANY_MAP[insuranceCompany];
+        const result = await (0, sales_repository_js_1.assignInsuranceCompany)(agentId, insuredId ?? '', policyNumber ?? '', displayName);
+        res.json({ data: result, error: null, meta: null });
+    }
+    catch (err) {
+        next(err);
+    }
+});
+/**
  * GET /api/v1/sales/client/:clientId
  * Auth: required
  * Returns all transactions for a specific client (by insured_id).
