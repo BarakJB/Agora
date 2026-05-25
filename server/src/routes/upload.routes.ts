@@ -269,21 +269,6 @@ uploadRouter.post('/parse', upload.single('file'), async (req, res, next) => {
       return;
     }
 
-    const rawCompany = (req.body.insuranceCompany as string | undefined)?.trim() ?? '';
-    if (!rawCompany) {
-      res.status(400).json({ data: null, error: 'יש לבחור חברת ביטוח לפני העלאת קובץ', meta: null });
-      return;
-    }
-    if (!isValidCompanyCode(rawCompany)) {
-      res.status(400).json({
-        data: null,
-        error: `חברת ביטוח לא חוקית. ערכים מותרים: ${VALID_INSURANCE_COMPANIES.join(', ')}`,
-        meta: null,
-      });
-      return;
-    }
-    const insuranceCompanyCode: InsuranceCompanyCode = rawCompany;
-
     const ext = file.originalname.toLowerCase();
     const isZip = ext.endsWith('.zip');
     const isExcel = ext.endsWith('.xls') || ext.endsWith('.xlsx');
@@ -295,10 +280,31 @@ uploadRouter.post('/parse', upload.single('file'), async (req, res, next) => {
       return;
     }
 
-    const selectedLabel = COMPANY_CODE_TO_LABEL[insuranceCompanyCode];
+    const clientIsAgreement = (req.body.isAgreement as string | undefined) === 'true';
+    const isAgreementUpload = isPdfFile || clientIsAgreement;
+
+    const rawCompany = (req.body.insuranceCompany as string | undefined)?.trim() ?? '';
+
+    if (!isAgreementUpload) {
+      if (!rawCompany) {
+        res.status(400).json({ data: null, error: 'יש לבחור חברת ביטוח לפני העלאת קובץ', meta: null });
+        return;
+      }
+      if (!isValidCompanyCode(rawCompany)) {
+        res.status(400).json({
+          data: null,
+          error: `חברת ביטוח לא חוקית. ערכים מותרים: ${VALID_INSURANCE_COMPANIES.join(', ')}`,
+          meta: null,
+        });
+        return;
+      }
+    }
+
+    const insuranceCompanyCode: InsuranceCompanyCode | null = isValidCompanyCode(rawCompany) ? rawCompany : null;
+    const selectedLabel = insuranceCompanyCode ? COMPANY_CODE_TO_LABEL[insuranceCompanyCode] : null;
 
     function buildCompanyMismatchWarning(detected: string | null): string | null {
-      if (!detected || detected === selectedLabel) return null;
+      if (!detected || !selectedLabel || detected === selectedLabel) return null;
       return `החברה שזוהתה (${detected}) שונה מהבחירה שלך (${selectedLabel})`;
     }
 

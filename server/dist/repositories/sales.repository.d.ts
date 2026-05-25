@@ -105,7 +105,10 @@ export interface ClientTransactionRow {
  * Search clients (unique insured_id + insured_name) for an agent.
  * Optionally filter by name or ID search term.
  */
-export declare function searchClients(agentId: string, search?: string, limit?: number, portfolioType?: PortfolioFilter): Promise<ClientSummaryRow[]>;
+export declare function searchClients(agentId: string, search?: string, limit?: number, offset?: number, portfolioType?: PortfolioFilter): Promise<{
+    items: ClientSummaryRow[];
+    total: number;
+}>;
 /**
  * Get all transactions for a specific client (by insured_id) belonging to an agent.
  */
@@ -239,5 +242,12 @@ export declare function getCompanyProductBreakdown(agentId: string, options?: {
     toMonth?: string;
     portfolioType?: PortfolioFilter;
 }): Promise<CompanyProductBreakdown>;
+export interface AnnualSnapshot {
+    growthPct: number;
+    newClientsLast3Months: number;
+    totalActiveClients: number;
+    retentionRate: number;
+}
+export declare function getAnnualSnapshot(agentId: string, portfolioType?: PortfolioFilter): Promise<AnnualSnapshot>;
 export declare function getMonthlySalarySummary(agentId: string, portfolioType?: PortfolioFilter): Promise<MonthlySalarySummary[]>;
 //# sourceMappingURL=sales.repository.d.ts.map

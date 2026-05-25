@@ -1,8 +1,14 @@
 "use strict";
 Object.defineProperty(exports, "__esModule", { value: true });
-exports.assignCompanySchema = exports.INSURANCE_COMPANY_MAP = exports.contractCoverageQuerySchema = exports.companyProductQuerySchema = exports.summaryByTypeQuerySchema = void 0;
+exports.assignCompanySchema = exports.INSURANCE_COMPANY_MAP = exports.contractCoverageQuerySchema = exports.companyProductQuerySchema = exports.summaryByTypeQuerySchema = exports.clientsQuerySchema = void 0;
 const zod_1 = require("zod");
 const common_schemas_js_1 = require("./common.schemas.js");
+exports.clientsQuerySchema = zod_1.z.object({
+    search: zod_1.z.string().optional(),
+    page: zod_1.z.coerce.number().int().min(1).default(1),
+    pageSize: zod_1.z.coerce.number().int().min(1).max(200).default(50),
+    portfolioType: zod_1.z.enum(['personal', 'partners', 'all']).default('all'),
+});
 const monthPattern = /^\d{4}-(0[1-9]|1[0-2])$/;
 exports.summaryByTypeQuerySchema = zod_1.z.object({
     month: zod_1.z.string().regex(monthPattern, 'month must be YYYY-MM format'),

@@ -24,6 +24,7 @@ class MemoryStore {
       email: 'd.aharoni@agora.co.il',
       phone: '054-9876543',
       licenseNumber: '052-998432-1',
+      licenseNumberPartners: null,
       taxId: '052998432',
       taxStatus: 'self_employed',
       niiRate: 17.83,

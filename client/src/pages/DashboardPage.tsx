@@ -1,6 +1,10 @@
 import { useState, useMemo, useEffect, useRef, useCallback } from 'react';
 import { useNavigate } from 'react-router-dom';
 import Icon from '../components/ui/Icon';
+import { targetsApi } from '../services/api';
+import type { TargetProgress } from '../types/targets';
+import { getLevelColors } from '../utils/profitThresholds';
+import type { TrafficLightLevel } from '../utils/profitThresholds';
 import CompanyLogo from '../components/common/CompanyLogo';
 import { TrafficLightPill } from '../components/common/TrafficLight';
 import { MetricCard } from '../components/common/MetricCard';
@@ -123,13 +127,17 @@ export default function DashboardPage() {
   const [summaryByType, setSummaryByType] = useState<SalesSummaryByTypeResponse | null>(null);
   const [summaryLoading, setSummaryLoading] = useState(false);
 
-  // F3 — Forecast widget
+  // F1-5 — Annual average card
+  const [annualSummary, setAnnualSummary] = useState<{ avg: number; activeMonths: number } | null>(null);
+
+  // F3 — Forecast (embedded in small prediction card)
   const [forecast, setForecast] = useState<RevenueForecastResponse | null>(null);
-  const [forecastLoading, setForecastLoading] = useState(false);
-  const [forecastTooltipOpen, setForecastTooltipOpen] = useState(false);
 
   // F7 — Partners split
   const [partnersSplitPct, setPartnersSplitPct] = useState<number | null>(null);
+
+  // Targets progress widget
+  const [targetsProgress, setTargetsProgress] = useState<TargetProgress[]>([]);
 
   // Load from DB — called on every mount, after upload, and on filter change
   const loadFromDb = useCallback(async () => {
@@ -169,6 +177,7 @@ export default function DashboardPage() {
       .catch(() => {});
   }, [userMode]);
 
+
   // Derived data
   const availableMonths = useMemo(() => {
     const months = new Set<string>();
@@ -183,6 +192,15 @@ export default function DashboardPage() {
       setSelectedMonth(availableMonths[availableMonths.length - 1]);
     }
   }, [availableMonths, selectedMonth]);
+
+  // Targets progress — reload when selected month changes
+  useEffect(() => {
+    if (userMode !== 'new') return;
+    const month = selectedMonth || undefined;
+    targetsApi.getProgress(month)
+      .then((res) => { if (res.data) setTargetsProgress(res.data); })
+      .catch(() => {});
+  }, [userMode, selectedMonth]);
 
   // F1 + F3 — load summary and forecast when month or filter changes
   useEffect(() => {
@@ -206,14 +224,11 @@ export default function DashboardPage() {
     }
 
     async function loadForecast() {
-      setForecastLoading(true);
       try {
         const res = await salesApi.getRevenueForecast({ portfolioType: portfolioFilter });
         if (!cancelled) setForecast(res.data);
       } catch {
         // non-critical
-      } finally {
-        if (!cancelled) setForecastLoading(false);
       }
     }
 
@@ -221,6 +236,25 @@ export default function DashboardPage() {
     loadForecast();
     return () => { cancelled = true; };
   }, [userMode, selectedMonth, portfolioFilter]);
+
+  // F1-5 — Annual average: load when filter changes
+  useEffect(() => {
+    if (userMode !== 'new') return;
+    let cancelled = false;
+
+    salesApi.getMonthlySalarySummary({ portfolioType: portfolioFilter })
+      .then((res) => {
+        if (cancelled || !res.data) return;
+        const months = res.data.slice(-12);
+        const activeMonths = months.length;
+        if (activeMonths === 0) return;
+        const total = months.reduce((s, m) => s + m.totalCommission, 0);
+        setAnnualSummary({ avg: Math.round(total / 12), activeMonths });
+      })
+      .catch(() => {});
+
+    return () => { cancelled = true; };
+  }, [userMode, portfolioFilter]);
 
   const filtered = useMemo(() =>
     commissions.filter(c => c.processingMonth === selectedMonth),
@@ -280,6 +314,12 @@ export default function DashboardPage() {
   const historicalAverage = useMemo(() => {
     if (monthlyTotals.length === 0) return 0;
     return monthlyTotals.reduce((s, m) => s + m.total, 0) / monthlyTotals.length;
+  }, [monthlyTotals]);
+
+  const last6MonthsAverage = useMemo(() => {
+    if (monthlyTotals.length === 0) return 0;
+    const last6 = monthlyTotals.slice(-6);
+    return last6.reduce((s, m) => s + m.total, 0) / last6.length;
   }, [monthlyTotals]);
 
   const monthVsAvgLevel = useMemo(
@@ -499,11 +539,11 @@ export default function DashboardPage() {
           </button>
         </div>
 
-        {/* F1 — 4 main number cards by commission type */}
-        {(summaryByType || summaryLoading) && (
-          <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
+        {/* F1 — 5 main number cards by commission type */}
+        {(summaryByType || summaryLoading || annualSummary) && (
+          <div className="grid grid-cols-2 lg:grid-cols-5 gap-3">
             {summaryLoading && !summaryByType ? (
-              Array.from({ length: 4 }).map((_, i) => (
+              Array.from({ length: 5 }).map((_, i) => (
                 <div key={i} className="bg-surface-container-lowest rounded-lg p-5 animate-pulse h-28" />
               ))
             ) : summaryByType ? (
@@ -541,19 +581,12 @@ export default function DashboardPage() {
                   bgClass="editorial-gradient"
                   isFeatured
                 />
+                {annualSummary && (
+                  <AnnualAvgCard avg={annualSummary.avg} activeMonths={annualSummary.activeMonths} />
+                )}
               </>
             ) : null}
           </div>
-        )}
-
-        {/* F3 — Forecast widget */}
-        {(forecast || forecastLoading) && (
-          <ForecastWidget
-            forecast={forecast}
-            loading={forecastLoading}
-            tooltipOpen={forecastTooltipOpen}
-            onToggleTooltip={() => setForecastTooltipOpen((v) => !v)}
-          />
         )}
 
         {/* F7 — Partners split widget */}
@@ -640,15 +673,38 @@ export default function DashboardPage() {
 
           {/* Prediction */}
           <div className="editorial-gradient rounded-lg p-5 text-white relative overflow-hidden">
-            <p className="text-[10px] font-bold uppercase tracking-widest text-white/60 mb-3 font-headline">תחזית לחודש הבא</p>
-            <div className="flex items-baseline gap-1.5">
-              <span className="text-3xl font-black font-headline">{fmt(prediction)}</span>
-              <span className="text-lg font-bold text-white/40">&#8362;</span>
+            <div className="flex items-start justify-between gap-4">
+              <div>
+                <p className="text-[10px] font-bold uppercase tracking-widest text-white/60 mb-2 font-headline">תחזית לחודש הבא</p>
+                <div className="flex items-baseline gap-1.5">
+                  <span className="text-3xl font-black font-headline">{fmt(Math.round(forecast?.predictedTotal ?? prediction))}</span>
+                  <span className="text-lg font-bold text-white/40">&#8362;</span>
+                </div>
+              </div>
+              <div className="text-end border-s border-white/20 ps-4">
+                <p className="text-[10px] font-bold uppercase tracking-widest text-white/60 mb-2 font-headline">ממוצע 6 חודשים</p>
+                <div className="flex items-baseline gap-1 justify-end">
+                  <span className="text-2xl font-black font-headline text-white/90">{fmt(Math.round(last6MonthsAverage))}</span>
+                  <span className="text-sm font-bold text-white/40">&#8362;</span>
+                </div>
+              </div>
             </div>
+            {forecast && (
+              <div className="flex items-center gap-4 mt-3 text-xs">
+                <span className="text-white/80">
+                  נפרעים: <span className="font-bold text-white">{fmt(forecast.breakdown.nifraim)}&#8362;</span>
+                </span>
+                <span className="text-white/80">
+                  היקף: <span className="font-bold text-white">{fmt(forecast.breakdown.hekef)}&#8362;</span>
+                </span>
+              </div>
+            )}
             <p className="text-xs text-white/60 mt-2">
-              {monthlyTotals.length >= 2
-                ? `ממוצע משוקלל של ${monthlyTotals.length} חודשים`
-                : 'מבוסס על ממוצע חודשי'}
+              {forecast
+                ? `מבוסס על ${forecast.basedOnMonths} חודשים`
+                : monthlyTotals.length >= 2
+                  ? `ממוצע משוקלל של ${monthlyTotals.length} חודשים`
+                  : 'מבוסס על ממוצע חודשי'}
             </p>
             <div className="absolute -bottom-4 -left-4 w-20 h-20 bg-white/10 rounded-full blur-xl" />
           </div>
@@ -752,6 +808,9 @@ export default function DashboardPage() {
         {portfolioData && portfolioData.overview.totalClients > 0 && (
           <CrossSellHint navigate={navigate} clientCount={portfolioData.overview.totalClients} />
         )}
+
+        {/* Targets progress widget */}
+        <TargetsWidget progress={targetsProgress} onNavigate={() => navigate('/targets')} />
 
         {/* Salary Breakdown by Commission Type */}
         {filtered.length > 0 && (
@@ -1211,129 +1270,32 @@ function SummaryTypeCard({ title, value, changePct, icon, accentClass, bgClass, 
   );
 }
 
-/* ─── F3: ForecastWidget ─── */
-interface ForecastWidgetProps {
-  forecast: RevenueForecastResponse | null;
-  loading: boolean;
-  tooltipOpen: boolean;
-  onToggleTooltip: () => void;
+/* ─── F1-5: AnnualAvgCard ─── */
+interface AnnualAvgCardProps {
+  avg: number;
+  activeMonths: number;
 }
 
-const CONFIDENCE_LABEL: Record<RevenueForecastResponse['confidence'], string> = {
-  high: 'גבוהה',
-  medium: 'בינונית',
-  low: 'נמוכה',
-};
-
-const CONFIDENCE_COLOR: Record<RevenueForecastResponse['confidence'], string> = {
-  high: 'text-secondary',
-  medium: 'text-on-tertiary-container',
-  low: 'text-error',
-};
-
-function ForecastWidget({ forecast, loading, tooltipOpen, onToggleTooltip }: ForecastWidgetProps) {
-  if (loading && !forecast) {
-    return <div className="bg-surface-container-lowest rounded-lg p-6 animate-pulse h-36" />;
-  }
-  if (!forecast) return null;
-
-  const total = forecast.predictedTotal;
-  const { nifraim, hekef, accumulation } = forecast.breakdown;
-  const bars = [
-    { label: 'נפרעים', value: nifraim, color: 'bg-primary' },
-    { label: 'היקף', value: hekef, color: 'bg-secondary' },
-    { label: 'צבירה', value: accumulation, color: 'bg-on-tertiary-container' },
-  ].filter((b) => b.value > 0);
-
-  const lowData = forecast.basedOnMonths < 3;
-
+function AnnualAvgCard({ avg, activeMonths }: AnnualAvgCardProps) {
   return (
-    <div className="editorial-gradient rounded-lg p-6 text-white relative overflow-hidden">
-      <div className="absolute -bottom-4 -left-4 w-24 h-24 bg-white/10 rounded-full blur-xl" />
-      <div className="relative z-10">
-        <div className="flex items-start justify-between mb-4">
-          <div>
-            <p className="text-[10px] font-bold uppercase tracking-widest text-white/60 mb-1 font-headline">
-              תחזית חודש הבא
-            </p>
-            <div className="flex items-baseline gap-1.5">
-              <span className="text-4xl font-black font-headline">{fmt(Math.round(total))}</span>
-              <span className="text-xl font-bold text-white/40">&#8362;</span>
-            </div>
-          </div>
-          <div className="text-end">
-            <p className="text-[10px] text-white/60 mb-1">רמת ביטחון</p>
-            <span className={`text-sm font-bold ${CONFIDENCE_COLOR[forecast.confidence]}`}>
-              {CONFIDENCE_LABEL[forecast.confidence]}
-            </span>
-            <p className="text-[10px] text-white/50 mt-0.5">
-              מבוסס על {forecast.basedOnMonths} חודשים
-            </p>
-          </div>
-        </div>
-
-        {lowData && (
-          <div className="mb-3 bg-white/10 rounded-lg px-3 py-2 flex items-center gap-2">
-            <Icon name="info" size="sm" className="text-white/70" />
-            <p className="text-xs text-white/80">נדרשים לפחות 3 חודשי נתונים לתחזית אמינה</p>
-          </div>
-        )}
-
-        {bars.length > 0 && (
-          <div className="space-y-2 mb-4">
-            {bars.map((bar) => (
-              <div key={bar.label} className="flex items-center gap-3">
-                <span className="text-xs text-white/70 w-14 shrink-0">{bar.label}</span>
-                <div className="flex-1 h-1.5 bg-white/20 rounded-full overflow-hidden">
-                  <div
-                    className={`h-full ${bar.color} rounded-full`}
-                    style={{ width: total > 0 ? `${(bar.value / total) * 100}%` : '0%' }}
-                  />
-                </div>
-                <span className="text-xs font-bold text-white/90 w-20 text-end">
-                  {fmt(Math.round(bar.value))} &#8362;
-                </span>
-              </div>
-            ))}
-          </div>
-        )}
-
-        {forecast.assumptions.length > 0 && (
-          <div className="relative">
-            <button
-              onClick={onToggleTooltip}
-              className="text-[11px] text-white/60 underline hover:text-white/90 transition-colors focus:outline-none focus:ring-1 focus:ring-white/40 rounded"
-              aria-expanded={tooltipOpen}
-              aria-label="הצג הנחות תחזית"
-            >
-              מה זה אומר?
-            </button>
-            {tooltipOpen && (
-              <div className="absolute bottom-full mb-2 right-0 bg-surface-container-lowest text-on-surface rounded-lg shadow-editorial p-4 w-64 z-20 border border-outline-variant/30">
-                <p className="text-xs font-bold mb-2 text-on-surface">הנחות התחזית:</p>
-                <ul className="space-y-1">
-                  {forecast.assumptions.map((a, i) => (
-                    <li key={i} className="text-xs text-on-surface-variant flex items-start gap-1.5">
-                      <span className="text-primary mt-0.5 shrink-0">•</span>
-                      {a}
-                    </li>
-                  ))}
-                </ul>
-                <button
-                  onClick={onToggleTooltip}
-                  className="mt-3 text-[10px] text-on-surface-variant hover:text-primary"
-                  aria-label="סגור הסבר"
-                >
-                  סגור
-                </button>
-              </div>
-            )}
-          </div>
-        )}
+    <div className="bg-secondary-fixed rounded-lg p-5 relative overflow-hidden">
+      <div className="flex items-center gap-2 mb-3">
+        <Icon name="calendar_today" size="sm" className="text-secondary" />
+        <span className="text-[10px] font-bold uppercase tracking-widest text-secondary opacity-70">ממוצע שנתי</span>
       </div>
+      <div className="flex items-baseline gap-1.5">
+        <span className="font-black font-headline text-2xl text-secondary">{fmt(avg)}</span>
+        <span className="text-sm font-bold text-secondary opacity-40">&#8362;</span>
+      </div>
+      <p className="text-xs text-on-surface-variant mt-2">
+        {activeMonths < 12
+          ? `מבוסס על ${activeMonths} חודשי פעילות`
+          : 'ממוצע 12 חודשים אחרונים'}
+      </p>
     </div>
   );
 }
+
 
 /* ─── F7: PartnersSplitWidget ─── */
 interface PartnersSplitWidgetProps {
@@ -1451,7 +1413,8 @@ function UploadModal({ open, mode, onComplete, onClose }: {
   }
 
   async function processFile(file: File) {
-    if (!selectedCompany) {
+    const isAgreement = mode === 'agreement';
+    if (!isAgreement && !selectedCompany) {
       setError('יש לבחור חברת ביטוח לפני העלאת קובץ');
       return;
     }
@@ -1462,7 +1425,8 @@ function UploadModal({ open, mode, onComplete, onClose }: {
       const token = localStorage.getItem('agora-token');
       const fd = new FormData();
       fd.append('file', file);
-      fd.append('insuranceCompany', selectedCompany);
+      if (isAgreement) fd.append('isAgreement', 'true');
+      if (selectedCompany) fd.append('insuranceCompany', selectedCompany);
 
       const res = await fetch('/api/v1/uploads/parse', {
         method: 'POST',
@@ -1477,9 +1441,9 @@ function UploadModal({ open, mode, onComplete, onClose }: {
       }
 
       const parsed = json.data as Array<{ reportType: string; records: Array<Record<string, unknown>>; errors: unknown[]; detectedCompany?: string }>;
-      const isAgreement = json.meta?.isAgreement;
+      const isAgreementResponse = json.meta?.isAgreement;
 
-      if (isAgreement) {
+      if (isAgreementResponse) {
         setUploadedFiles(prev => [...prev, { name: file.name, reportType: 'agreement', records: parsed[0]?.records.length || 0, status: 'success' }]);
         return;
       }
@@ -1554,97 +1518,107 @@ function UploadModal({ open, mode, onComplete, onClose }: {
 
         <div className="p-5 space-y-4">
           {/* File input — supports multiple */}
-          <input ref={fileRef} type="file" accept=".xls,.xlsx,.csv" multiple className="hidden"
+          <input ref={fileRef} type="file" accept=".xls,.xlsx,.csv,.pdf" multiple className="hidden"
             onChange={e => {
               const files = e.target.files ? Array.from(e.target.files) : [];
               if (files.length > 0) handleMultipleFiles(files);
               if (fileRef.current) fileRef.current.value = '';
             }} />
 
-          {/* Company selection */}
-          <div>
-            <p className="text-xs font-black uppercase tracking-widest text-on-surface-variant mb-3">
-              {mode === 'agreement' ? 'בחר חברת ביטוח של ההסכם' : 'בחר חברת ביטוח'}
-            </p>
-            <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
-              {UPLOAD_MODAL_COMPANIES.map((co) => {
-                const isSelected = selectedCompany === co.code;
-                return (
-                  <button
-                    key={co.code}
-                    type="button"
-                    onClick={() => { setSelectedCompany(co.code); setError(null); }}
-                    className={`flex items-center gap-3 px-4 py-3 rounded-lg border-2 text-start transition-all ${
-                      isSelected
-                        ? 'border-secondary bg-secondary-container/30 text-on-surface'
-                        : 'border-outline-variant bg-surface-container-low text-on-surface-variant hover:border-secondary/50 hover:bg-secondary-container/10'
-                    }`}
-                  >
-                    <CompanyLogo company={co.code} size="md" />
-                    <span className="font-bold text-sm leading-tight">{co.label}</span>
-                  </button>
-                );
-              })}
+          {/* Company selection — hidden for agreement uploads */}
+          {mode !== 'agreement' && (
+            <div>
+              <p className="text-xs font-black uppercase tracking-widest text-on-surface-variant mb-3">
+                בחר חברת ביטוח
+              </p>
+              <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+                {UPLOAD_MODAL_COMPANIES.map((co) => {
+                  const isSelected = selectedCompany === co.code;
+                  return (
+                    <button
+                      key={co.code}
+                      type="button"
+                      onClick={() => { setSelectedCompany(co.code); setError(null); }}
+                      className={`flex items-center gap-3 px-4 py-3 rounded-lg border-2 text-start transition-all ${
+                        isSelected
+                          ? 'border-secondary bg-secondary-container/30 text-on-surface'
+                          : 'border-outline-variant bg-surface-container-low text-on-surface-variant hover:border-secondary/50 hover:bg-secondary-container/10'
+                      }`}
+                    >
+                      <CompanyLogo company={co.code} size="md" />
+                      <span className="font-bold text-sm leading-tight">{co.label}</span>
+                    </button>
+                  );
+                })}
+              </div>
             </div>
-          </div>
+          )}
 
           {/* Drop zone */}
-          <div
-            role="button"
-            aria-label={selectedCompany ? 'גרור קבצים או לחץ לבחירה' : 'בחר חברת ביטוח קודם'}
-            aria-disabled={!selectedCompany}
-            tabIndex={0}
-            onKeyDown={e => {
-              if (e.key === 'Enter' || e.key === ' ') {
-                e.preventDefault();
-                if (selectedCompany) { fileRef.current?.click(); } else { setError('יש לבחור חברת ביטוח לפני העלאת קובץ'); }
-              }
-            }}
-            className={`border-2 border-dashed rounded-lg p-8 flex flex-col items-center text-center transition-colors ${
-              !selectedCompany
-                ? 'border-outline-variant/40 opacity-50 cursor-not-allowed'
-                : isDragging
-                ? 'border-primary bg-primary-fixed/30 cursor-pointer'
-                : 'border-outline-variant hover:bg-primary-fixed/20 cursor-pointer group'
-            }`}
-            onDragOver={e => { e.preventDefault(); if (selectedCompany) setIsDragging(true); }}
-            onDragLeave={() => setIsDragging(false)}
-            onDrop={e => {
-              e.preventDefault();
-              setIsDragging(false);
-              if (!selectedCompany) { setError('יש לבחור חברת ביטוח לפני העלאת קובץ'); return; }
-              const files = Array.from(e.dataTransfer.files);
-              if (files.length > 0) handleMultipleFiles(files);
-            }}
-            onClick={() => {
-              if (!selectedCompany) { setError('יש לבחור חברת ביטוח לפני העלאת קובץ'); return; }
-              if (!uploading) fileRef.current?.click();
-            }}
-          >
-            {uploading ? (
-              <><div className="w-10 h-10 rounded-full border-4 border-primary/20 border-t-primary animate-spin mb-3" /><p className="font-bold text-primary">מעבד קבצים...</p></>
-            ) : !selectedCompany ? (
-              <>
-                <div className="w-14 h-14 bg-surface-container rounded-full flex items-center justify-center text-on-surface-variant mb-3">
-                  <Icon name="cloud_upload" size="lg" />
-                </div>
-                <p className="font-bold text-on-surface-variant mb-1">בחר חברת ביטוח קודם</p>
-              </>
-            ) : (
-              <>
-                <div className="w-14 h-14 bg-primary-fixed rounded-full flex items-center justify-center text-primary mb-3 group-hover:scale-110 transition-transform">
-                  <Icon name="cloud_upload" size="lg" />
-                </div>
-                <p className="font-bold text-primary mb-1">גרור קבצים או לחץ לבחירה</p>
-                <p className="text-sm text-on-surface-variant mb-2">ניתן להעלות כמה קבצים בבת אחת</p>
-                <div className="flex gap-2">
-                  <span className="bg-primary-fixed text-primary text-xs font-bold px-2.5 py-0.5 rounded-full">.xls</span>
-                  <span className="bg-primary-fixed text-primary text-xs font-bold px-2.5 py-0.5 rounded-full">.xlsx</span>
-                  <span className="bg-surface-container-high text-on-surface-variant text-xs font-bold px-2.5 py-0.5 rounded-full">.csv</span>
-                </div>
-              </>
-            )}
-          </div>
+          {(() => {
+            const canUpload = mode === 'agreement' || !!selectedCompany;
+            return (
+              <div
+                role="button"
+                aria-label={canUpload ? 'גרור קבצים או לחץ לבחירה' : 'בחר חברת ביטוח קודם'}
+                aria-disabled={!canUpload}
+                tabIndex={0}
+                onKeyDown={e => {
+                  if (e.key === 'Enter' || e.key === ' ') {
+                    e.preventDefault();
+                    if (canUpload) { fileRef.current?.click(); } else { setError('יש לבחור חברת ביטוח לפני העלאת קובץ'); }
+                  }
+                }}
+                className={`border-2 border-dashed rounded-lg p-8 flex flex-col items-center text-center transition-colors ${
+                  !canUpload
+                    ? 'border-outline-variant/40 opacity-50 cursor-not-allowed'
+                    : isDragging
+                    ? 'border-primary bg-primary-fixed/30 cursor-pointer'
+                    : 'border-outline-variant hover:bg-primary-fixed/20 cursor-pointer group'
+                }`}
+                onDragOver={e => { e.preventDefault(); if (canUpload) setIsDragging(true); }}
+                onDragLeave={() => setIsDragging(false)}
+                onDrop={e => {
+                  e.preventDefault();
+                  setIsDragging(false);
+                  if (!canUpload) { setError('יש לבחור חברת ביטוח לפני העלאת קובץ'); return; }
+                  const files = Array.from(e.dataTransfer.files);
+                  if (files.length > 0) handleMultipleFiles(files);
+                }}
+                onClick={() => {
+                  if (!canUpload) { setError('יש לבחור חברת ביטוח לפני העלאת קובץ'); return; }
+                  if (!uploading) fileRef.current?.click();
+                }}
+              >
+                {uploading ? (
+                  <><div className="w-10 h-10 rounded-full border-4 border-primary/20 border-t-primary animate-spin mb-3" /><p className="font-bold text-primary">מעבד קבצים...</p></>
+                ) : !canUpload ? (
+                  <>
+                    <div className="w-14 h-14 bg-surface-container rounded-full flex items-center justify-center text-on-surface-variant mb-3">
+                      <Icon name="cloud_upload" size="lg" />
+                    </div>
+                    <p className="font-bold text-on-surface-variant mb-1">בחר חברת ביטוח קודם</p>
+                  </>
+                ) : (
+                  <>
+                    <div className="w-14 h-14 bg-primary-fixed rounded-full flex items-center justify-center text-primary mb-3 group-hover:scale-110 transition-transform">
+                      <Icon name="cloud_upload" size="lg" />
+                    </div>
+                    <p className="font-bold text-primary mb-1">גרור קבצים או לחץ לבחירה</p>
+                    <p className="text-sm text-on-surface-variant mb-2">ניתן להעלות כמה קבצים בבת אחת</p>
+                    <div className="flex gap-2">
+                      <span className="bg-primary-fixed text-primary text-xs font-bold px-2.5 py-0.5 rounded-full">.xls</span>
+                      <span className="bg-primary-fixed text-primary text-xs font-bold px-2.5 py-0.5 rounded-full">.xlsx</span>
+                      <span className="bg-surface-container-high text-on-surface-variant text-xs font-bold px-2.5 py-0.5 rounded-full">.csv</span>
+                      {mode === 'agreement' && (
+                        <span className="bg-primary-fixed text-primary text-xs font-bold px-2.5 py-0.5 rounded-full">.pdf</span>
+                      )}
+                    </div>
+                  </>
+                )}
+              </div>
+            );
+          })()}
 
           {/* Error */}
           {error && (
@@ -1697,6 +1671,118 @@ function UploadModal({ open, mode, onComplete, onClose }: {
             </div>
           )}
         </div>
+      </div>
+    </div>
+  );
+}
+
+/* ─── Targets Widget ─── */
+const TARGET_METRIC_LABELS: Record<string, string> = {
+  total: 'סה"כ ברוטו',
+  nifraim: 'נפרעים',
+  hekef: 'היקף',
+  accumulation: 'צבירה',
+};
+
+function getProgressLevel(pct: number): TrafficLightLevel {
+  if (pct >= 100) return 'green';
+  if (pct >= 70) return 'yellow';
+  return 'red';
+}
+
+interface TargetsWidgetProps {
+  progress: TargetProgress[];
+  onNavigate: () => void;
+}
+
+function TargetsWidget({ progress, onNavigate }: TargetsWidgetProps) {
+  const monthlyProgress = progress.filter(p => p.period === 'monthly');
+
+  if (progress.length === 0) {
+    return (
+      <div className="bg-surface-container-lowest rounded-lg p-5 border border-outline-variant/20 flex items-center justify-between gap-4">
+        <div className="flex items-center gap-3">
+          <div className="w-9 h-9 rounded-lg bg-primary-fixed flex items-center justify-center flex-shrink-0">
+            <Icon name="flag" className="text-primary" size="sm" />
+          </div>
+          <div>
+            <p className="font-bold text-sm text-on-surface">יעדי סוכן</p>
+            <p className="text-xs text-on-surface-variant">טרם הגדרת יעדים לעמלות שלך</p>
+          </div>
+        </div>
+        <button
+          onClick={onNavigate}
+          className="flex-shrink-0 flex items-center gap-1.5 px-3 py-1.5 bg-primary-container text-white rounded-lg text-xs font-bold hover:opacity-90 transition-opacity"
+          aria-label="עבור לדף יעדים"
+        >
+          <Icon name="add" size="sm" />
+          הגדר יעדים
+        </button>
+      </div>
+    );
+  }
+
+  return (
+    <div className="bg-surface-container-lowest rounded-lg overflow-hidden border border-outline-variant/20 shadow-editorial-sm">
+      <div className="px-5 py-4 flex items-center justify-between">
+        <div className="flex items-center gap-3">
+          <div className="w-8 h-8 rounded-lg bg-primary-fixed flex items-center justify-center">
+            <Icon name="flag" className="text-primary" size="sm" />
+          </div>
+          <span className="text-sm font-black font-headline text-on-surface">התקדמות יעדים</span>
+          <span className="text-[10px] uppercase tracking-widest text-on-surface-variant">חודשי</span>
+        </div>
+        <button
+          onClick={onNavigate}
+          className="text-xs font-bold text-primary hover:underline flex items-center gap-1"
+          aria-label="ערוך יעדים"
+        >
+          ערוך יעדים
+          <Icon name="arrow_back" size="sm" />
+        </button>
+      </div>
+
+      <div className="px-5 pb-5 space-y-3">
+        {monthlyProgress.map((p) => {
+          const level = getProgressLevel(p.progressPct);
+          const colors = getLevelColors(level);
+          const clampedPct = Math.min(p.progressPct, 100);
+
+          return (
+            <div key={`${p.metric}-${p.period}`} className="space-y-1.5">
+              <div className="flex items-center justify-between">
+                <span className="text-xs font-semibold text-on-surface">
+                  {TARGET_METRIC_LABELS[p.metric] ?? p.metric}
+                </span>
+                <div className="flex items-center gap-2">
+                  <span className="text-xs text-on-surface-variant">
+                    {fmt(Math.round(p.currentAmount))}₪ / {fmt(Math.round(p.targetAmount))}₪
+                  </span>
+                  <span className={`text-[10px] font-bold px-1.5 py-0.5 rounded-full ${colors.bg} ${colors.text} border ${colors.border}`}>
+                    {Math.round(p.progressPct)}%
+                  </span>
+                </div>
+              </div>
+              <div
+                className="h-2 rounded-full bg-surface-container-high overflow-hidden"
+                role="progressbar"
+                aria-valuenow={Math.round(p.progressPct)}
+                aria-valuemin={0}
+                aria-valuemax={100}
+                aria-label={`${TARGET_METRIC_LABELS[p.metric] ?? p.metric}: ${Math.round(p.progressPct)}%`}
+              >
+                <div
+                  className={`h-full rounded-full transition-all duration-500 ${
+                    level === 'green' ? 'bg-green-500' :
+                    level === 'yellow' ? 'bg-amber-400' :
+                    'bg-red-500'
+                  }`}
+                  style={{ width: `${clampedPct}%` }}
+                />
+              </div>
+            </div>
+          );
+        })}
       </div>
     </div>
   );

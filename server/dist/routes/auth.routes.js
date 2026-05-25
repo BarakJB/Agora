@@ -98,6 +98,7 @@ exports.authRouter.post('/login', (0, validate_js_1.validate)({ body: auth_schem
                     name: agent.name,
                     phone: agent.phone || '',
                     licenseNumber: agent.licenseNumber || '',
+                    licenseNumberPartners: agent.licenseNumberPartners ?? null,
                     taxStatus: agent.taxStatus || 'self_employed',
                     agreementUploaded: agent.agreementUploaded === 1 || hasSalesData,
                     hasSalesData,

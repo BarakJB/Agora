@@ -1,12 +1,14 @@
 import { create } from 'zustand';
 import { persist } from 'zustand/middleware';
-import { salesApi } from '../services/api';
+import { salesApi, getAgentNumbers } from '../services/api';
+import type { AgentNumber } from '../services/api';
 
 export type PortfolioFilter = 'all' | 'personal' | 'partners';
 
 interface PortfolioFilterState {
   portfolioFilter: PortfolioFilter;
   hasMultiplePortfolios: boolean;
+  agentNumbers: AgentNumber[];
   lastSalesUploadAt: number;
   setPortfolioFilter: (filter: PortfolioFilter) => void;
   checkMultiplePortfolios: () => Promise<void>;
@@ -18,6 +20,7 @@ export const usePortfolioFilterStore = create<PortfolioFilterState>()(
     (set) => ({
       portfolioFilter: 'all',
       hasMultiplePortfolios: false,
+      agentNumbers: [],
       lastSalesUploadAt: 0,
 
       setPortfolioFilter: (filter) => set({ portfolioFilter: filter }),
@@ -26,12 +29,18 @@ export const usePortfolioFilterStore = create<PortfolioFilterState>()(
 
       checkMultiplePortfolios: async () => {
         try {
-          const res = await salesApi.getPortfolioTypes();
-          const types = res.data?.types ?? [];
+          const [typesRes, numbersRes] = await Promise.all([
+            salesApi.getPortfolioTypes(),
+            getAgentNumbers(),
+          ]);
+
+          const types = typesRes.data?.types ?? [];
           const hasBoth = types.includes('personal') && types.includes('partners');
+          const agentNumbers = numbersRes.data ?? [];
 
           set((state) => ({
             hasMultiplePortfolios: hasBoth,
+            agentNumbers,
             portfolioFilter: hasBoth ? state.portfolioFilter : 'all',
           }));
         } catch {

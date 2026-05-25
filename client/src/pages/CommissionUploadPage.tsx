@@ -147,10 +147,6 @@ export default function CommissionUploadPage() {
   function handleDrop(e: React.DragEvent) {
     e.preventDefault();
     setIsDragging(false);
-    if (!selectedCompany) {
-      setParseError('בחר חברת ביטוח קודם');
-      return;
-    }
     const files = Array.from(e.dataTransfer.files);
     if (files.length > 0) processFile(files[0]);
   }
@@ -173,10 +169,15 @@ export default function CommissionUploadPage() {
       return;
     }
 
-    await parseExcelFile(file);
+    if (!isPdf && !selectedCompany) {
+      setParseError('בחר חברת ביטוח קודם');
+      return;
+    }
+
+    await parseExcelFile(file, isPdf);
   }
 
-  async function parseExcelFile(file: File) {
+  async function parseExcelFile(file: File, isAgreementFile = false) {
     setParsing(true);
     setParseError(null);
     setParseWarning(null);
@@ -187,6 +188,7 @@ export default function CommissionUploadPage() {
     try {
       const formData = new FormData();
       formData.append('file', file);
+      if (isAgreementFile) formData.append('isAgreement', 'true');
       if (selectedCompany) formData.append('insuranceCompany', selectedCompany);
 
       const token = localStorage.getItem('agora-token');
@@ -350,16 +352,14 @@ export default function CommissionUploadPage() {
               {/* Drag & Drop */}
               <div
                 className={`border-2 border-dashed rounded-lg p-12 flex flex-col items-center justify-center text-center space-y-4 transition-colors ${
-                  !selectedCompany
-                    ? 'border-outline-variant/40 opacity-50 cursor-not-allowed'
-                    : isDragging
+                  isDragging
                     ? 'border-primary bg-primary-fixed/30 cursor-pointer'
                     : 'border-outline-variant hover:bg-primary-fixed/20 cursor-pointer group'
                 }`}
-                onDragOver={(e) => { if (selectedCompany) handleDragOver(e); else e.preventDefault(); }}
+                onDragOver={handleDragOver}
                 onDragLeave={handleDragLeave}
                 onDrop={handleDrop}
-                onClick={() => { if (selectedCompany) fileInputRef.current?.click(); }}
+                onClick={() => fileInputRef.current?.click()}
               >
                 {parsing ? (
                   <>
@@ -369,12 +369,12 @@ export default function CommissionUploadPage() {
                   </>
                 ) : (
                   <>
-                    <div className={`w-16 h-16 bg-primary-fixed rounded-full flex items-center justify-center text-primary mb-2 ${selectedCompany ? 'group-hover:scale-110' : ''} transition-transform`}>
+                    <div className="w-16 h-16 bg-primary-fixed rounded-full flex items-center justify-center text-primary mb-2 group-hover:scale-110 transition-transform">
                       <Icon name="cloud_upload" size="lg" />
                     </div>
                     <h3 className="text-xl font-bold text-primary">גרור ושחרר קבצים כאן</h3>
                     <p className="text-on-surface-variant max-w-sm">
-                      תמיכה בקבצי <strong>XLS, XLSX</strong> (הראל, הפניקס, אנליסט), <strong>ZIP</strong> (מנורה), <strong>CSV</strong> ו-<strong>PDF</strong> (הסכמי עמלות).
+                      תמיכה בקבצי <strong>XLS, XLSX</strong> (הראל, הפניקס, אנליסט), <strong>ZIP</strong> (מנורה), <strong>CSV</strong> ו-<strong>PDF</strong> (הסכמי עמלות — ללא צורך לבחור חברה).
                     </p>
                     <div className="flex gap-3 mt-4">
                       <span className="bg-primary-fixed text-primary text-xs font-bold px-3 py-1 rounded-full">.xls</span>
@@ -384,11 +384,10 @@ export default function CommissionUploadPage() {
                       <span className="bg-primary-fixed text-primary text-xs font-bold px-3 py-1 rounded-full">.pdf</span>
                     </div>
                     <button
-                      disabled={!selectedCompany}
-                      className="mt-4 bg-primary text-on-primary px-8 py-3 rounded-lg font-bold hover:shadow-lg transition-all disabled:opacity-40 disabled:cursor-not-allowed disabled:shadow-none"
-                      onClick={(e) => { e.stopPropagation(); if (selectedCompany) fileInputRef.current?.click(); }}
+                      className="mt-4 bg-primary text-on-primary px-8 py-3 rounded-lg font-bold hover:shadow-lg transition-all"
+                      onClick={(e) => { e.stopPropagation(); fileInputRef.current?.click(); }}
                     >
-                      {selectedCompany ? 'בחר קובץ מהמחשב' : 'בחר חברת ביטוח קודם'}
+                      בחר קובץ מהמחשב
                     </button>
                   </>
                 )}

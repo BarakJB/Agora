@@ -10,6 +10,7 @@ export interface Agent {
     email: string;
     phone: string;
     licenseNumber: string;
+    licenseNumberPartners: string | null;
     taxId: string;
     taxStatus: TaxStatus;
     niiRate: number;

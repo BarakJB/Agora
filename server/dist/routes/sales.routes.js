@@ -146,20 +146,27 @@ exports.salesRouter.get('/portfolio', async (req, res, next) => {
     }
 });
 /**
- * GET /api/v1/sales/clients?search=<name or tz>
+ * GET /api/v1/sales/clients?search=<name or tz>&page=1&pageSize=50&portfolioType=all
  * Auth: required
- * Returns unique clients grouped by insured_id, with summary stats.
+ * Returns unique clients grouped by insured_id, with summary stats and pagination.
  */
-exports.salesRouter.get('/clients', async (req, res, next) => {
+exports.salesRouter.get('/clients', (0, validate_js_1.validate)({ query: sales_schemas_js_1.clientsQuerySchema }), async (_req, res, next) => {
     try {
         const agentId = (res.locals.sub || res.locals.agentId);
-        const search = req.query.search;
-        const portfolioType = parsePortfolioType(req.query.portfolioType);
-        const clients = await (0, sales_repository_js_1.searchClients)(agentId, search, 50, portfolioType);
+        const { search, page, pageSize, portfolioType } = res.locals.parsedQuery;
+        const offset = (page - 1) * pageSize;
+        const { items, total } = await (0, sales_repository_js_1.searchClients)(agentId, search, pageSize, offset, portfolioType);
+        const totalPages = Math.ceil(total / pageSize);
         res.json({
-            data: clients,
+            data: {
+                items,
+                total,
+                page,
+                pageSize,
+                totalPages,
+            },
             error: null,
-            meta: { count: clients.length },
+            meta: { count: items.length },
         });
     }
     catch (err) {
@@ -294,6 +301,21 @@ exports.salesRouter.get('/summary-by-type', (0, validate_js_1.validate)({ query:
             data: { current, previous, changePct: changePctData },
             error: null,
             meta: { currentMonth: month, previousMonth: prevMonth },
+        });
+    }
+    catch (err) {
+        next(err);
+    }
+});
+exports.salesRouter.get('/annual-snapshot', async (req, res, next) => {
+    try {
+        const agentId = (res.locals.sub || res.locals.agentId);
+        const portfolioType = parsePortfolioType(req.query.portfolioType);
+        const snapshot = await (0, sales_repository_js_1.getAnnualSnapshot)(agentId, portfolioType);
+        res.json({
+            data: snapshot,
+            error: null,
+            meta: null,
         });
     }
     catch (err) {

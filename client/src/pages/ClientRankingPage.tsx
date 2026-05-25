@@ -32,11 +32,11 @@ export default function ClientRankingPage() {
       setError(null);
       try {
         const [clientsRes, salesRes] = await Promise.all([
-          api.searchClients(undefined, portfolioFilter),
+          api.searchClients({ portfolioType: portfolioFilter }),
           api.getSalesTransactions(undefined, portfolioFilter),
         ]);
         if (!cancelled) {
-          setClients(clientsRes.data ?? []);
+          setClients(clientsRes.data?.items ?? []);
           setCommissions((salesRes.data || []).map(mapToCommissionRow));
         }
       } catch (err) {

@@ -7,6 +7,7 @@ export const createAgentBodySchema = z.object({
   email: z.string().email('invalid email'),
   phone: z.string().min(1, 'phone is required'),
   licenseNumber: z.string().min(1, 'licenseNumber is required'),
+  licenseNumberPartners: z.string().nullable().optional(),
   taxId: z.string().min(1, 'taxId is required'),
   taxStatus: z.enum(['self_employed', 'employee', 'individual', 'corporation']),
   niiRate: z.number().min(0).max(100),

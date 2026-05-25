@@ -1,4 +1,21 @@
 import { z } from 'zod';
+export declare const clientsQuerySchema: z.ZodObject<{
+    search: z.ZodOptional<z.ZodString>;
+    page: z.ZodDefault<z.ZodNumber>;
+    pageSize: z.ZodDefault<z.ZodNumber>;
+    portfolioType: z.ZodDefault<z.ZodEnum<["personal", "partners", "all"]>>;
+}, "strip", z.ZodTypeAny, {
+    page: number;
+    portfolioType: "personal" | "partners" | "all";
+    pageSize: number;
+    search?: string | undefined;
+}, {
+    page?: number | undefined;
+    portfolioType?: "personal" | "partners" | "all" | undefined;
+    search?: string | undefined;
+    pageSize?: number | undefined;
+}>;
+export type ClientsQuery = z.infer<typeof clientsQuerySchema>;
 export declare const summaryByTypeQuerySchema: z.ZodObject<{
     month: z.ZodString;
     portfolioType: z.ZodDefault<z.ZodEnum<["personal", "partners", "all"]>>;

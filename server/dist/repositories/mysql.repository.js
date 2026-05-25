@@ -64,6 +64,7 @@ function toAgent(row) {
         email: row.email,
         phone: row.phone,
         licenseNumber: row.license_number,
+        licenseNumberPartners: row.license_number_partners ?? null,
         taxId: row.tax_id,
         taxStatus: row.tax_status,
         niiRate: Number(row.nii_rate),
@@ -131,11 +132,11 @@ function toUpload(row) {
 }
 // ============ Agents ============
 async function getAllAgents() {
-    const [rows] = await database_js_1.default.query('SELECT id, agent_id, agency_id, name, email, phone, license_number, tax_id, tax_status, nii_rate, created_at, updated_at, deleted_at FROM agents WHERE deleted_at IS NULL');
+    const [rows] = await database_js_1.default.query('SELECT id, agent_id, agency_id, name, email, phone, license_number, license_number_partners, tax_id, tax_status, nii_rate, created_at, updated_at, deleted_at FROM agents WHERE deleted_at IS NULL');
     return rows.map(toAgent);
 }
 async function getAgentById(id) {
-    const [rows] = await database_js_1.default.query('SELECT id, agent_id, agency_id, name, email, phone, license_number, tax_id, tax_status, nii_rate, created_at, updated_at, deleted_at FROM agents WHERE id = ? AND deleted_at IS NULL', [id]);
+    const [rows] = await database_js_1.default.query('SELECT id, agent_id, agency_id, name, email, phone, license_number, license_number_partners, tax_id, tax_status, nii_rate, created_at, updated_at, deleted_at FROM agents WHERE id = ? AND deleted_at IS NULL', [id]);
     return rows.length > 0 ? toAgent(rows[0]) : null;
 }
 // ============ Policies ============
@@ -278,8 +279,8 @@ async function createAgent(id, data) {
 async function updateAgent(id, data) {
     const fieldMap = {
         agentId: 'agent_id', agencyId: 'agency_id', name: 'name', email: 'email',
-        phone: 'phone', licenseNumber: 'license_number', taxId: 'tax_id',
-        taxStatus: 'tax_status', niiRate: 'nii_rate',
+        phone: 'phone', licenseNumber: 'license_number', licenseNumberPartners: 'license_number_partners',
+        taxId: 'tax_id', taxStatus: 'tax_status', niiRate: 'nii_rate',
     };
     const sets = [];
     const params = [];
@@ -299,7 +300,7 @@ async function updateAgent(id, data) {
 async function softDeleteAgent(id) {
     await database_js_1.default.query('UPDATE agents SET deleted_at = NOW() WHERE id = ? AND deleted_at IS NULL', [id]);
     // Return with deletedAt set
-    const [rows] = await database_js_1.default.query('SELECT id, agent_id, agency_id, name, email, phone, license_number, tax_id, tax_status, nii_rate, created_at, updated_at, deleted_at FROM agents WHERE id = ?', [id]);
+    const [rows] = await database_js_1.default.query('SELECT id, agent_id, agency_id, name, email, phone, license_number, license_number_partners, tax_id, tax_status, nii_rate, created_at, updated_at, deleted_at FROM agents WHERE id = ?', [id]);
     return rows.length > 0 ? toAgent(rows[0]) : null;
 }
 // ============ Policy Writes ============

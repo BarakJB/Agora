@@ -146,7 +146,7 @@ async function execGetClientHistory(agentId: string, args: Record<string, unknow
   const clientName = String(args.clientName ?? '').trim();
   if (!clientName) return { error: 'clientName is required' };
 
-  const matches = await searchClients(agentId, clientName, 1);
+  const { items: matches } = await searchClients(agentId, clientName, 1);
   if (matches.length === 0) return { error: `לא נמצא לקוח בשם "${clientName}"` };
 
   const clientId = matches[0].insuredId;

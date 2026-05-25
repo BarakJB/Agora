@@ -30,11 +30,11 @@ function exportToCsv(data: CompanyProductBreakdownResponse) {
       rows.push([
         company.company,
         p.branch,
-        p.productName,
-        p.nifraim,
-        p.hekef,
-        p.accumulation,
-        p.total,
+        p.product,
+        p.nifraimAmount,
+        p.hekefAmount,
+        p.accumulationAmount,
+        p.totalCommission,
         `${p.pctOfCompany.toFixed(1)}%`,
       ].join(','));
     }
@@ -51,7 +51,7 @@ function exportToCsv(data: CompanyProductBreakdownResponse) {
 function CompanyCard({ company, grandTotal }: { company: CompanyBreakdown; grandTotal: number }) {
   const [expanded, setExpanded] = useState(false);
 
-  const sortedProducts = [...company.products].sort((a, b) => b.total - a.total);
+  const sortedProducts = [...company.products].sort((a, b) => b.totalCommission - a.totalCommission);
 
   return (
     <div className="bg-surface-container-lowest rounded-lg overflow-hidden border border-outline-variant/20">
@@ -76,7 +76,7 @@ function CompanyCard({ company, grandTotal }: { company: CompanyBreakdown; grand
         <div className="flex items-center gap-6 text-end">
           <div className="hidden sm:block">
             <p className="text-[10px] text-on-surface-variant mb-0.5">ממוצע חודשי</p>
-            <p className="text-sm font-bold text-on-surface">{fmt(Math.round(company.monthlyAvg))} &#8362;</p>
+            <p className="text-sm font-bold text-on-surface">{fmt(Math.round(company.monthlyAverage))} &#8362;</p>
           </div>
           <div className="hidden sm:block">
             <p className="text-[10px] text-on-surface-variant mb-0.5">% מהכלל</p>
@@ -84,15 +84,15 @@ function CompanyCard({ company, grandTotal }: { company: CompanyBreakdown; grand
               <div className="w-16 h-1.5 bg-surface-container-high rounded-full overflow-hidden">
                 <div
                   className="h-full bg-primary rounded-full"
-                  style={{ width: `${Math.min(company.pctOfGrand, 100)}%` }}
+                  style={{ width: `${Math.min(company.pctOfTotal, 100)}%` }}
                 />
               </div>
-              <span className="text-sm font-bold text-primary">{company.pctOfGrand.toFixed(1)}%</span>
+              <span className="text-sm font-bold text-primary">{company.pctOfTotal.toFixed(1)}%</span>
             </div>
           </div>
           <div>
             <p className="text-[10px] text-on-surface-variant mb-0.5">סה"כ</p>
-            <p className="text-lg font-black font-headline text-primary">{fmt(Math.round(company.total))} &#8362;</p>
+            <p className="text-lg font-black font-headline text-primary">{fmt(Math.round(company.totalCommission))} &#8362;</p>
           </div>
         </div>
       </button>
@@ -116,18 +116,18 @@ function CompanyCard({ company, grandTotal }: { company: CompanyBreakdown; grand
               {sortedProducts.map((product, idx) => (
                 <tr key={idx} className="border-t border-outline-variant/10 hover:bg-surface-container-low transition-colors">
                   <td className="px-6 py-3 text-on-surface-variant">{product.branch || '—'}</td>
-                  <td className="px-4 py-3 font-medium text-on-surface">{product.productName || '—'}</td>
+                  <td className="px-4 py-3 font-medium text-on-surface">{product.product || '—'}</td>
                   <td className="px-4 py-3 text-end text-on-surface-variant">
-                    {product.nifraim > 0 ? `${fmt(Math.round(product.nifraim))}₪` : '—'}
+                    {product.nifraimAmount > 0 ? `${fmt(Math.round(product.nifraimAmount))}₪` : '—'}
                   </td>
                   <td className="px-4 py-3 text-end text-on-surface-variant">
-                    {product.hekef > 0 ? `${fmt(Math.round(product.hekef))}₪` : '—'}
+                    {product.hekefAmount > 0 ? `${fmt(Math.round(product.hekefAmount))}₪` : '—'}
                   </td>
                   <td className="px-4 py-3 text-end text-on-surface-variant">
-                    {product.accumulation > 0 ? `${fmt(Math.round(product.accumulation))}₪` : '—'}
+                    {product.accumulationAmount > 0 ? `${fmt(Math.round(product.accumulationAmount))}₪` : '—'}
                   </td>
                   <td className="px-4 py-3 text-end font-bold text-secondary">
-                    {fmt(Math.round(product.total))} &#8362;
+                    {fmt(Math.round(product.totalCommission))} &#8362;
                   </td>
                   <td className="px-4 py-3 text-end">
                     <div className="flex items-center justify-end gap-2">
@@ -148,9 +148,9 @@ function CompanyCard({ company, grandTotal }: { company: CompanyBreakdown; grand
             <tfoot>
               <tr className="bg-surface-container-low border-t border-outline-variant/20">
                 <td colSpan={5} className="px-6 py-3 font-bold text-on-surface">סה"כ {company.company}</td>
-                <td className="px-4 py-3 text-end font-black text-primary">{fmt(Math.round(company.total))} &#8362;</td>
+                <td className="px-4 py-3 text-end font-black text-primary">{fmt(Math.round(company.totalCommission))} &#8362;</td>
                 <td className="px-4 py-3 text-end text-xs text-on-surface-variant">
-                  {grandTotal > 0 ? `${((company.total / grandTotal) * 100).toFixed(1)}% מהכלל` : ''}
+                  {grandTotal > 0 ? `${((company.totalCommission / grandTotal) * 100).toFixed(1)}% מהכלל` : ''}
                 </td>
               </tr>
             </tfoot>
@@ -196,7 +196,7 @@ export default function CompanyProductBreakdownPage() {
     load();
   }, [load]);
 
-  const sortedCompanies = data ? [...data.companies].sort((a, b) => b.total - a.total) : [];
+  const sortedCompanies = data ? [...data.companies].sort((a, b) => b.totalCommission - a.totalCommission) : [];
 
   const rangeLabel = fromMonth && toMonth
     ? `${formatMonth(fromMonth)} — ${formatMonth(toMonth)}`

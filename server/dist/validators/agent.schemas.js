@@ -9,6 +9,7 @@ exports.createAgentBodySchema = zod_1.z.object({
     email: zod_1.z.string().email('invalid email'),
     phone: zod_1.z.string().min(1, 'phone is required'),
     licenseNumber: zod_1.z.string().min(1, 'licenseNumber is required'),
+    licenseNumberPartners: zod_1.z.string().nullable().optional(),
     taxId: zod_1.z.string().min(1, 'taxId is required'),
     taxStatus: zod_1.z.enum(['self_employed', 'employee', 'individual', 'corporation']),
     niiRate: zod_1.z.number().min(0).max(100),

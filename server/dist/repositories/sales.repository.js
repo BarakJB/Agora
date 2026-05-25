@@ -14,6 +14,7 @@ exports.assignInsuranceCompany = assignInsuranceCompany;
 exports.getActivePortfolioTypes = getActivePortfolioTypes;
 exports.getSummaryByReportType = getSummaryByReportType;
 exports.getCompanyProductBreakdown = getCompanyProductBreakdown;
+exports.getAnnualSnapshot = getAnnualSnapshot;
 exports.getMonthlySalarySummary = getMonthlySalarySummary;
 const database_js_1 = __importDefault(require("../config/database.js"));
 // Only these report types represent individual policy-level records.
@@ -128,8 +129,25 @@ async function getSalesTransactions(agentId, month, portfolioType = 'all') {
  * Search clients (unique insured_id + insured_name) for an agent.
  * Optionally filter by name or ID search term.
  */
-async function searchClients(agentId, search, limit = 50, portfolioType = 'all') {
-    let sql = `
+async function searchClients(agentId, search, limit = 50, offset = 0, portfolioType = 'all') {
+    const baseWhere = `
+    FROM sales_transactions s
+    WHERE s.agent_id = ?
+      AND s.report_type IN ${POLICY_REPORT_TYPES}
+      AND s.insured_name IS NOT NULL
+      AND s.insured_name != ''`;
+    const filterParams = [];
+    let filterClause = '';
+    if (search && search.trim()) {
+        const term = `%${search.trim()}%`;
+        filterClause += ' AND (s.insured_name LIKE ? OR s.insured_id LIKE ?)';
+        filterParams.push(term, term);
+    }
+    if (portfolioType !== 'all') {
+        filterClause += ' AND s.portfolio_type = ?';
+        filterParams.push(portfolioType);
+    }
+    const itemsSql = `
     SELECT insured_name,
            MAX(insured_id) AS insured_id,
            ROUND(SUM(commission_amount), 2) AS total_commission,
@@ -143,25 +161,21 @@ async function searchClients(agentId, search, limit = 50, portfolioType = 'all')
               AND t.insurance_company IS NOT NULL
               AND t.insurance_company != '') AS insurance_companies,
            GROUP_CONCAT(DISTINCT CONCAT(branch, '/', COALESCE(product_name,''))) AS products
-    FROM sales_transactions s
-    WHERE s.agent_id = ?
-      AND s.report_type IN ${POLICY_REPORT_TYPES}
-      AND s.insured_name IS NOT NULL
-      AND s.insured_name != ''`;
-    const params = [agentId, agentId];
-    if (search && search.trim()) {
-        const term = `%${search.trim()}%`;
-        sql += ' AND (s.insured_name LIKE ? OR s.insured_id LIKE ?)';
-        params.push(term, term);
-    }
-    if (portfolioType !== 'all') {
-        sql += ' AND s.portfolio_type = ?';
-        params.push(portfolioType);
-    }
-    sql += ' GROUP BY s.insured_name ORDER BY last_month DESC, total_commission DESC LIMIT ?';
-    params.push(limit);
-    const [rows] = await database_js_1.default.query(sql, params);
-    return rows.map((r) => {
+    ${baseWhere}${filterClause}
+    GROUP BY s.insured_name
+    ORDER BY last_month DESC, total_commission DESC
+    LIMIT ? OFFSET ?`;
+    const countSql = `
+    SELECT COUNT(DISTINCT s.insured_name) AS total
+    ${baseWhere}${filterClause}`;
+    const itemsParams = [agentId, agentId, ...filterParams, limit, offset];
+    const countParams = [agentId, ...filterParams];
+    const [[rows], [countRows]] = await Promise.all([
+        database_js_1.default.query(itemsSql, itemsParams),
+        database_js_1.default.query(countSql, countParams),
+    ]);
+    const total = Number(countRows[0]?.total ?? 0);
+    const items = rows.map((r) => {
         const totalCommission = Number(r.total_commission);
         const monthsActive = Number(r.months_active) || 1;
         return {
@@ -176,6 +190,7 @@ async function searchClients(agentId, search, limit = 50, portfolioType = 'all')
             products: r.products ? [...new Set(r.products.split(',').map((p) => p.split('/')[0]).filter(Boolean))] : [],
         };
     });
+    return { items, total };
 }
 /**
  * Get all transactions for a specific client (by insured_id) belonging to an agent.
@@ -664,12 +679,81 @@ async function getCompanyProductBreakdown(agentId, options = {}) {
     companies.sort((a, b) => b.totalCommission - a.totalCommission);
     return { companies, grandTotal };
 }
+async function getAnnualSnapshot(agentId, portfolioType = 'all') {
+    const portfolioFilter = portfolioType !== 'all' ? ' AND portfolio_type = ?' : '';
+    const baseParams = (extra = []) => portfolioType !== 'all' ? [agentId, ...extra, portfolioType] : [agentId, ...extra];
+    const [growthRows, newClientRows, activeClientRows, retentionRows] = await Promise.all([
+        database_js_1.default.query(`SELECT
+         SUM(CASE WHEN processing_month >= DATE_SUB(CURDATE(), INTERVAL 12 MONTH) THEN commission_amount ELSE 0 END) AS recent12,
+         SUM(CASE WHEN processing_month >= DATE_SUB(CURDATE(), INTERVAL 24 MONTH)
+                   AND processing_month < DATE_SUB(CURDATE(), INTERVAL 12 MONTH)
+             THEN commission_amount ELSE 0 END) AS prior12
+       FROM sales_transactions
+       WHERE agent_id = ?
+         AND report_type IN ${POLICY_REPORT_TYPES}${portfolioFilter}`, baseParams()),
+        database_js_1.default.query(`SELECT COUNT(DISTINCT s1.insured_name) AS new_clients
+       FROM sales_transactions s1
+       WHERE s1.agent_id = ?
+         AND s1.report_type IN ${POLICY_REPORT_TYPES}
+         AND s1.insured_name IS NOT NULL AND s1.insured_name != ''
+         AND s1.processing_month >= DATE_SUB(CURDATE(), INTERVAL 3 MONTH)
+         AND NOT EXISTS (
+           SELECT 1 FROM sales_transactions s2
+           WHERE s2.agent_id = s1.agent_id
+             AND s2.insured_name = s1.insured_name
+             AND s2.processing_month < DATE_SUB(CURDATE(), INTERVAL 3 MONTH)
+         )${portfolioFilter.replace('portfolio_type', 's1.portfolio_type')}`, baseParams()),
+        database_js_1.default.query(`SELECT COUNT(DISTINCT insured_name) AS active_clients
+       FROM sales_transactions
+       WHERE agent_id = ?
+         AND report_type IN ${POLICY_REPORT_TYPES}
+         AND insured_name IS NOT NULL AND insured_name != ''
+         AND processing_month >= DATE_SUB(CURDATE(), INTERVAL 12 MONTH)${portfolioFilter}`, baseParams()),
+        database_js_1.default.query(`SELECT
+         COUNT(DISTINCT CASE WHEN recent.insured_name IS NOT NULL THEN prev.insured_name END) AS retained,
+         COUNT(DISTINCT prev.insured_name) AS total_prev
+       FROM (
+         SELECT DISTINCT insured_name
+         FROM sales_transactions
+         WHERE agent_id = ?
+           AND report_type IN ${POLICY_REPORT_TYPES}
+           AND insured_name IS NOT NULL AND insured_name != ''
+           AND processing_month < DATE_SUB(CURDATE(), INTERVAL 3 MONTH)${portfolioFilter}
+       ) AS prev
+       LEFT JOIN (
+         SELECT DISTINCT insured_name
+         FROM sales_transactions
+         WHERE agent_id = ?
+           AND report_type IN ${POLICY_REPORT_TYPES}
+           AND insured_name IS NOT NULL AND insured_name != ''
+           AND processing_month >= DATE_SUB(CURDATE(), INTERVAL 3 MONTH)${portfolioFilter}
+       ) AS recent ON recent.insured_name = prev.insured_name`, portfolioType !== 'all'
+            ? [agentId, portfolioType, agentId, portfolioType]
+            : [agentId, agentId]),
+    ]);
+    const recent12 = Number(growthRows[0][0]?.recent12) || 0;
+    const prior12 = Number(growthRows[0][0]?.prior12) || 0;
+    let growthPct = 0;
+    if (prior12 > 0) {
+        growthPct = Math.round(((recent12 - prior12) / prior12) * 1000) / 10;
+    }
+    else if (recent12 > 0) {
+        growthPct = 100;
+    }
+    const newClientsLast3Months = Number(newClientRows[0][0]?.new_clients) || 0;
+    const totalActiveClients = Number(activeClientRows[0][0]?.active_clients) || 0;
+    const retained = Number(retentionRows[0][0]?.retained) || 0;
+    const totalPrev = Number(retentionRows[0][0]?.total_prev) || 0;
+    const retentionRate = totalPrev > 0 ? Math.round((retained / totalPrev) * 1000) / 10 : 0;
+    return { growthPct, newClientsLast3Months, totalActiveClients, retentionRate };
+}
 async function getMonthlySalarySummary(agentId, portfolioType = 'all') {
     let sql = `SELECT processing_month AS month,
             ROUND(SUM(commission_amount), 2) AS total_commission,
             COUNT(*) AS record_count
      FROM sales_transactions
-     WHERE agent_id = ?`;
+     WHERE agent_id = ?
+       AND report_type IN ${POLICY_REPORT_TYPES}`;
     const params = [agentId];
     if (portfolioType !== 'all') {
         sql += ' AND portfolio_type = ?';

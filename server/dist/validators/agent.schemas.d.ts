@@ -6,6 +6,7 @@ export declare const createAgentBodySchema: z.ZodObject<{
     email: z.ZodString;
     phone: z.ZodString;
     licenseNumber: z.ZodString;
+    licenseNumberPartners: z.ZodOptional<z.ZodNullable<z.ZodString>>;
     taxId: z.ZodString;
     taxStatus: z.ZodEnum<["self_employed", "employee", "individual", "corporation"]>;
     niiRate: z.ZodNumber;
@@ -19,6 +20,7 @@ export declare const createAgentBodySchema: z.ZodObject<{
     taxId: string;
     taxStatus: "self_employed" | "employee" | "individual" | "corporation";
     niiRate: number;
+    licenseNumberPartners?: string | null | undefined;
 }, {
     name: string;
     email: string;
@@ -29,6 +31,7 @@ export declare const createAgentBodySchema: z.ZodObject<{
     taxId: string;
     taxStatus: "self_employed" | "employee" | "individual" | "corporation";
     niiRate: number;
+    licenseNumberPartners?: string | null | undefined;
 }>;
 export declare const updateAgentBodySchema: z.ZodObject<{
     agentId: z.ZodOptional<z.ZodString>;
@@ -37,6 +40,7 @@ export declare const updateAgentBodySchema: z.ZodObject<{
     email: z.ZodOptional<z.ZodString>;
     phone: z.ZodOptional<z.ZodString>;
     licenseNumber: z.ZodOptional<z.ZodString>;
+    licenseNumberPartners: z.ZodOptional<z.ZodOptional<z.ZodNullable<z.ZodString>>>;
     taxId: z.ZodOptional<z.ZodString>;
     taxStatus: z.ZodOptional<z.ZodEnum<["self_employed", "employee", "individual", "corporation"]>>;
     niiRate: z.ZodOptional<z.ZodNumber>;
@@ -50,6 +54,7 @@ export declare const updateAgentBodySchema: z.ZodObject<{
     taxId?: string | undefined;
     taxStatus?: "self_employed" | "employee" | "individual" | "corporation" | undefined;
     niiRate?: number | undefined;
+    licenseNumberPartners?: string | null | undefined;
 }, {
     name?: string | undefined;
     email?: string | undefined;
@@ -60,6 +65,7 @@ export declare const updateAgentBodySchema: z.ZodObject<{
     taxId?: string | undefined;
     taxStatus?: "self_employed" | "employee" | "individual" | "corporation" | undefined;
     niiRate?: number | undefined;
+    licenseNumberPartners?: string | null | undefined;
 }>;
 export type CreateAgentBody = z.infer<typeof createAgentBodySchema>;
 export type UpdateAgentBody = z.infer<typeof updateAgentBodySchema>;

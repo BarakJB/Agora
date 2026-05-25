@@ -16,6 +16,7 @@ function toAgent(row: RowDataPacket): Agent {
     email: row.email,
     phone: row.phone,
     licenseNumber: row.license_number,
+    licenseNumberPartners: row.license_number_partners ?? null,
     taxId: row.tax_id,
     taxStatus: row.tax_status,
     niiRate: Number(row.nii_rate),
@@ -89,14 +90,14 @@ function toUpload(row: RowDataPacket): UploadRecord {
 
 export async function getAllAgents(): Promise<Agent[]> {
   const [rows] = await pool.query<RowDataPacket[]>(
-    'SELECT id, agent_id, agency_id, name, email, phone, license_number, tax_id, tax_status, nii_rate, created_at, updated_at, deleted_at FROM agents WHERE deleted_at IS NULL',
+    'SELECT id, agent_id, agency_id, name, email, phone, license_number, license_number_partners, tax_id, tax_status, nii_rate, created_at, updated_at, deleted_at FROM agents WHERE deleted_at IS NULL',
   );
   return rows.map(toAgent);
 }
 
 export async function getAgentById(id: string): Promise<Agent | null> {
   const [rows] = await pool.query<RowDataPacket[]>(
-    'SELECT id, agent_id, agency_id, name, email, phone, license_number, tax_id, tax_status, nii_rate, created_at, updated_at, deleted_at FROM agents WHERE id = ? AND deleted_at IS NULL',
+    'SELECT id, agent_id, agency_id, name, email, phone, license_number, license_number_partners, tax_id, tax_status, nii_rate, created_at, updated_at, deleted_at FROM agents WHERE id = ? AND deleted_at IS NULL',
     [id],
   );
   return rows.length > 0 ? toAgent(rows[0]) : null;
@@ -352,8 +353,8 @@ export async function createAgent(id: string, data: {
 export async function updateAgent(id: string, data: Record<string, unknown>): Promise<Agent | null> {
   const fieldMap: Record<string, string> = {
     agentId: 'agent_id', agencyId: 'agency_id', name: 'name', email: 'email',
-    phone: 'phone', licenseNumber: 'license_number', taxId: 'tax_id',
-    taxStatus: 'tax_status', niiRate: 'nii_rate',
+    phone: 'phone', licenseNumber: 'license_number', licenseNumberPartners: 'license_number_partners',
+    taxId: 'tax_id', taxStatus: 'tax_status', niiRate: 'nii_rate',
   };
 
   const sets: string[] = [];
@@ -383,7 +384,7 @@ export async function softDeleteAgent(id: string): Promise<Agent | null> {
   );
   // Return with deletedAt set
   const [rows] = await pool.query<RowDataPacket[]>(
-    'SELECT id, agent_id, agency_id, name, email, phone, license_number, tax_id, tax_status, nii_rate, created_at, updated_at, deleted_at FROM agents WHERE id = ?',
+    'SELECT id, agent_id, agency_id, name, email, phone, license_number, license_number_partners, tax_id, tax_status, nii_rate, created_at, updated_at, deleted_at FROM agents WHERE id = ?',
     [id],
   );
   return rows.length > 0 ? toAgent(rows[0]) : null;

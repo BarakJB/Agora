@@ -19,6 +19,7 @@ const stripe_routes_js_1 = require("./routes/stripe.routes.js");
 const rates_routes_js_1 = require("./routes/rates.routes.js");
 const advisor_routes_js_1 = require("./routes/advisor.routes.js");
 const settings_routes_js_1 = require("./routes/settings.routes.js");
+const targets_routes_js_1 = require("./routes/targets.routes.js");
 const commission_template_service_js_1 = require("./services/commission-template.service.js");
 const auth_middleware_js_1 = require("./middleware/auth.middleware.js");
 const errorHandler_js_1 = require("./middleware/errorHandler.js");
@@ -102,6 +103,7 @@ app.use('/api/v1/predictions', auth_middleware_js_1.requireAuth, prediction_rout
 app.use('/api/v1/rates', auth_middleware_js_1.requireAuth, rates_routes_js_1.ratesRouter);
 app.use('/api/v1/advisor', auth_middleware_js_1.requireAuth, advisor_routes_js_1.advisorRouter);
 app.use('/api/v1/settings', auth_middleware_js_1.requireAuth, settings_routes_js_1.settingsRouter);
+app.use('/api/v1/targets', auth_middleware_js_1.requireAuth, targets_routes_js_1.targetsRouter);
 app.use(errorHandler_js_1.errorHandler);
 exports.default = app;
 //# sourceMappingURL=app.js.map

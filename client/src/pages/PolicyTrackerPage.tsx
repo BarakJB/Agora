@@ -10,6 +10,8 @@ import {
 import PortfolioFilterToggle, { PortfolioFilterBanner } from '../components/common/PortfolioFilterToggle';
 import { usePortfolioFilterStore } from '../store/portfolioFilterStore';
 
+const PAGE_SIZE = 50;
+
 export default function PolicyTrackerPage() {
   const portfolioFilter = usePortfolioFilterStore((s) => s.portfolioFilter);
 
@@ -20,39 +22,62 @@ export default function PolicyTrackerPage() {
   const [transactions, setTransactions] = useState<ClientTransaction[]>([]);
   const [txLoading, setTxLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+
+  const [page, setPage] = useState(1);
+  const [totalPages, setTotalPages] = useState(1);
+  const [total, setTotal] = useState(0);
+
   const debounceRef = useRef<ReturnType<typeof setTimeout>>(undefined);
+  const listTopRef = useRef<HTMLDivElement>(null);
 
   const fmt = (n: number) => n.toLocaleString('he-IL');
 
-  const fetchClients = useCallback(async (term: string) => {
+  const fetchClients = useCallback(async (term: string, targetPage: number) => {
     setLoading(true);
     setError(null);
     try {
-      const res = await searchClients(term || undefined, portfolioFilter);
-      setClients(res.data ?? []);
+      const res = await searchClients({
+        search: term || undefined,
+        page: targetPage,
+        pageSize: PAGE_SIZE,
+        portfolioType: portfolioFilter,
+      });
+      const pageData = res.data;
+      setClients(pageData?.items ?? []);
+      setTotal(pageData?.total ?? 0);
+      setTotalPages(pageData?.totalPages ?? 1);
     } catch {
       setError('שגיאה בטעינת לקוחות');
       setClients([]);
+      setTotal(0);
+      setTotalPages(1);
     } finally {
       setLoading(false);
     }
   }, [portfolioFilter]);
 
-  // Load all clients on mount and on filter change
   useEffect(() => {
-    fetchClients('');
+    setPage(1);
+    fetchClients('', 1);
   }, [fetchClients]);
 
-  // Debounced search
   useEffect(() => {
     if (debounceRef.current) clearTimeout(debounceRef.current);
     debounceRef.current = setTimeout(() => {
-      fetchClients(search);
+      setPage(1);
+      fetchClients(search, 1);
     }, 300);
     return () => {
       if (debounceRef.current) clearTimeout(debounceRef.current);
     };
   }, [search, fetchClients]);
+
+  const goToPage = (target: number) => {
+    if (target < 1 || target > totalPages || target === page) return;
+    setPage(target);
+    fetchClients(search, target);
+    listTopRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+  };
 
   const handleClientClick = async (clientId: string) => {
     if (selectedClientId === clientId) {
@@ -71,6 +96,9 @@ export default function PolicyTrackerPage() {
       setTxLoading(false);
     }
   };
+
+  const pageStart = total === 0 ? 0 : (page - 1) * PAGE_SIZE + 1;
+  const pageEnd = Math.min(page * PAGE_SIZE, total);
 
   return (
     <div className="p-8 max-w-7xl mx-auto space-y-8" dir="rtl">
@@ -136,9 +164,13 @@ export default function PolicyTrackerPage() {
       {/* Results */}
       {!loading && clients.length > 0 && (
         <section className="space-y-4">
-          <p className="text-xs text-on-surface-variant font-bold uppercase tracking-widest">
-            {clients.length} לקוחות
-          </p>
+          <div ref={listTopRef} className="flex items-center justify-between">
+            <p className="text-xs text-on-surface-variant font-bold uppercase tracking-widest">
+              {total > PAGE_SIZE
+                ? `מציג ${pageStart.toLocaleString('he-IL')}–${pageEnd.toLocaleString('he-IL')} מתוך ${total.toLocaleString('he-IL')} לקוחות`
+                : `${total.toLocaleString('he-IL')} לקוחות`}
+            </p>
+          </div>
 
           <div className="space-y-3">
             {clients.map((client) => (
@@ -240,7 +272,6 @@ export default function PolicyTrackerPage() {
                     ) : (
                       <div className="space-y-0">
                         {(() => {
-                          // Group by month, sort months DESC, sort rows by amount DESC
                           const byMonth: Record<string, typeof transactions> = {};
                           transactions.forEach(tx => {
                             const m = tx.processingMonth || 'ללא';
@@ -312,6 +343,49 @@ export default function PolicyTrackerPage() {
               </div>
             ))}
           </div>
+
+          {/* Pagination — shown only when more than one page */}
+          {totalPages > 1 && (
+            <div className="flex items-center justify-between pt-4 border-t border-outline-variant/20">
+              <button
+                onClick={() => goToPage(page - 1)}
+                disabled={page === 1}
+                className="flex items-center gap-1.5 px-4 py-2 rounded-lg text-sm font-bold transition-all disabled:opacity-30 disabled:cursor-not-allowed hover:bg-surface-container-low"
+              >
+                <Icon name="chevron_right" size="sm" />
+                הקודם
+              </button>
+
+              <div className="flex items-center gap-3">
+                <span className="text-xs text-on-surface-variant">
+                  עמוד
+                </span>
+                <input
+                  type="number"
+                  min={1}
+                  max={totalPages}
+                  value={page}
+                  onChange={(e) => {
+                    const v = parseInt(e.target.value, 10);
+                    if (!isNaN(v)) goToPage(v);
+                  }}
+                  className="w-14 text-center py-1.5 bg-surface-container-lowest rounded-lg text-sm font-bold focus:outline-none focus:ring-2 focus:ring-primary/30"
+                />
+                <span className="text-xs text-on-surface-variant">
+                  מתוך {totalPages}
+                </span>
+              </div>
+
+              <button
+                onClick={() => goToPage(page + 1)}
+                disabled={page === totalPages}
+                className="flex items-center gap-1.5 px-4 py-2 rounded-lg text-sm font-bold transition-all disabled:opacity-30 disabled:cursor-not-allowed hover:bg-surface-container-low"
+              >
+                הבא
+                <Icon name="chevron_left" size="sm" />
+              </button>
+            </div>
+          )}
         </section>
       )}
     </div>

@@ -273,9 +273,31 @@ export async function searchClients(
   agentId: string,
   search?: string,
   limit = 50,
+  offset = 0,
   portfolioType: PortfolioFilter = 'all',
-): Promise<ClientSummaryRow[]> {
-  let sql = `
+): Promise<{ items: ClientSummaryRow[]; total: number }> {
+  const baseWhere = `
+    FROM sales_transactions s
+    WHERE s.agent_id = ?
+      AND s.report_type IN ${POLICY_REPORT_TYPES}
+      AND s.insured_name IS NOT NULL
+      AND s.insured_name != ''`;
+
+  const filterParams: unknown[] = [];
+  let filterClause = '';
+
+  if (search && search.trim()) {
+    const term = `%${search.trim()}%`;
+    filterClause += ' AND (s.insured_name LIKE ? OR s.insured_id LIKE ?)';
+    filterParams.push(term, term);
+  }
+
+  if (portfolioType !== 'all') {
+    filterClause += ' AND s.portfolio_type = ?';
+    filterParams.push(portfolioType);
+  }
+
+  const itemsSql = `
     SELECT insured_name,
            MAX(insured_id) AS insured_id,
            ROUND(SUM(commission_amount), 2) AS total_commission,
@@ -289,30 +311,26 @@ export async function searchClients(
               AND t.insurance_company IS NOT NULL
               AND t.insurance_company != '') AS insurance_companies,
            GROUP_CONCAT(DISTINCT CONCAT(branch, '/', COALESCE(product_name,''))) AS products
-    FROM sales_transactions s
-    WHERE s.agent_id = ?
-      AND s.report_type IN ${POLICY_REPORT_TYPES}
-      AND s.insured_name IS NOT NULL
-      AND s.insured_name != ''`;
-  const params: unknown[] = [agentId, agentId];
+    ${baseWhere}${filterClause}
+    GROUP BY s.insured_name
+    ORDER BY last_month DESC, total_commission DESC
+    LIMIT ? OFFSET ?`;
 
-  if (search && search.trim()) {
-    const term = `%${search.trim()}%`;
-    sql += ' AND (s.insured_name LIKE ? OR s.insured_id LIKE ?)';
-    params.push(term, term);
-  }
+  const countSql = `
+    SELECT COUNT(DISTINCT s.insured_name) AS total
+    ${baseWhere}${filterClause}`;
 
-  if (portfolioType !== 'all') {
-    sql += ' AND s.portfolio_type = ?';
-    params.push(portfolioType);
-  }
+  const itemsParams: unknown[] = [agentId, agentId, ...filterParams, limit, offset];
+  const countParams: unknown[] = [agentId, ...filterParams];
 
-  sql += ' GROUP BY s.insured_name ORDER BY last_month DESC, total_commission DESC LIMIT ?';
-  params.push(limit);
+  const [[rows], [countRows]] = await Promise.all([
+    pool.query<RowDataPacket[]>(itemsSql, itemsParams),
+    pool.query<RowDataPacket[]>(countSql, countParams),
+  ]);
 
-  const [rows] = await pool.query<RowDataPacket[]>(sql, params);
+  const total = Number((countRows[0] as RowDataPacket)?.total ?? 0);
 
-  return rows.map((r) => {
+  const items = rows.map((r) => {
     const totalCommission = Number(r.total_commission);
     const monthsActive = Number(r.months_active) || 1;
     return {
@@ -327,6 +345,8 @@ export async function searchClients(
       products: r.products ? [...new Set((r.products as string).split(',').map((p: string) => p.split('/')[0]).filter(Boolean))] : [],
     };
   });
+
+  return { items, total };
 }
 
 /**
@@ -1063,6 +1083,102 @@ export async function getCompanyProductBreakdown(
   return { companies, grandTotal };
 }
 
+export interface AnnualSnapshot {
+  growthPct: number;
+  newClientsLast3Months: number;
+  totalActiveClients: number;
+  retentionRate: number;
+}
+
+export async function getAnnualSnapshot(
+  agentId: string,
+  portfolioType: PortfolioFilter = 'all',
+): Promise<AnnualSnapshot> {
+  const portfolioFilter = portfolioType !== 'all' ? ' AND portfolio_type = ?' : '';
+  const baseParams = (extra: unknown[] = []): unknown[] =>
+    portfolioType !== 'all' ? [agentId, ...extra, portfolioType] : [agentId, ...extra];
+
+  const [growthRows, newClientRows, activeClientRows, retentionRows] = await Promise.all([
+    pool.query<RowDataPacket[]>(
+      `SELECT
+         SUM(CASE WHEN processing_month >= DATE_SUB(CURDATE(), INTERVAL 12 MONTH) THEN commission_amount ELSE 0 END) AS recent12,
+         SUM(CASE WHEN processing_month >= DATE_SUB(CURDATE(), INTERVAL 24 MONTH)
+                   AND processing_month < DATE_SUB(CURDATE(), INTERVAL 12 MONTH)
+             THEN commission_amount ELSE 0 END) AS prior12
+       FROM sales_transactions
+       WHERE agent_id = ?
+         AND report_type IN ${POLICY_REPORT_TYPES}${portfolioFilter}`,
+      baseParams(),
+    ),
+    pool.query<RowDataPacket[]>(
+      `SELECT COUNT(DISTINCT s1.insured_name) AS new_clients
+       FROM sales_transactions s1
+       WHERE s1.agent_id = ?
+         AND s1.report_type IN ${POLICY_REPORT_TYPES}
+         AND s1.insured_name IS NOT NULL AND s1.insured_name != ''
+         AND s1.processing_month >= DATE_SUB(CURDATE(), INTERVAL 3 MONTH)
+         AND NOT EXISTS (
+           SELECT 1 FROM sales_transactions s2
+           WHERE s2.agent_id = s1.agent_id
+             AND s2.insured_name = s1.insured_name
+             AND s2.processing_month < DATE_SUB(CURDATE(), INTERVAL 3 MONTH)
+         )${portfolioFilter.replace('portfolio_type', 's1.portfolio_type')}`,
+      baseParams(),
+    ),
+    pool.query<RowDataPacket[]>(
+      `SELECT COUNT(DISTINCT insured_name) AS active_clients
+       FROM sales_transactions
+       WHERE agent_id = ?
+         AND report_type IN ${POLICY_REPORT_TYPES}
+         AND insured_name IS NOT NULL AND insured_name != ''
+         AND processing_month >= DATE_SUB(CURDATE(), INTERVAL 12 MONTH)${portfolioFilter}`,
+      baseParams(),
+    ),
+    pool.query<RowDataPacket[]>(
+      `SELECT
+         COUNT(DISTINCT CASE WHEN recent.insured_name IS NOT NULL THEN prev.insured_name END) AS retained,
+         COUNT(DISTINCT prev.insured_name) AS total_prev
+       FROM (
+         SELECT DISTINCT insured_name
+         FROM sales_transactions
+         WHERE agent_id = ?
+           AND report_type IN ${POLICY_REPORT_TYPES}
+           AND insured_name IS NOT NULL AND insured_name != ''
+           AND processing_month < DATE_SUB(CURDATE(), INTERVAL 3 MONTH)${portfolioFilter}
+       ) AS prev
+       LEFT JOIN (
+         SELECT DISTINCT insured_name
+         FROM sales_transactions
+         WHERE agent_id = ?
+           AND report_type IN ${POLICY_REPORT_TYPES}
+           AND insured_name IS NOT NULL AND insured_name != ''
+           AND processing_month >= DATE_SUB(CURDATE(), INTERVAL 3 MONTH)${portfolioFilter}
+       ) AS recent ON recent.insured_name = prev.insured_name`,
+      portfolioType !== 'all'
+        ? [agentId, portfolioType, agentId, portfolioType]
+        : [agentId, agentId],
+    ),
+  ]);
+
+  const recent12 = Number(growthRows[0][0]?.recent12) || 0;
+  const prior12 = Number(growthRows[0][0]?.prior12) || 0;
+  let growthPct = 0;
+  if (prior12 > 0) {
+    growthPct = Math.round(((recent12 - prior12) / prior12) * 1000) / 10;
+  } else if (recent12 > 0) {
+    growthPct = 100;
+  }
+
+  const newClientsLast3Months = Number(newClientRows[0][0]?.new_clients) || 0;
+  const totalActiveClients = Number(activeClientRows[0][0]?.active_clients) || 0;
+
+  const retained = Number(retentionRows[0][0]?.retained) || 0;
+  const totalPrev = Number(retentionRows[0][0]?.total_prev) || 0;
+  const retentionRate = totalPrev > 0 ? Math.round((retained / totalPrev) * 1000) / 10 : 0;
+
+  return { growthPct, newClientsLast3Months, totalActiveClients, retentionRate };
+}
+
 export async function getMonthlySalarySummary(
   agentId: string,
   portfolioType: PortfolioFilter = 'all',
@@ -1071,7 +1187,8 @@ export async function getMonthlySalarySummary(
             ROUND(SUM(commission_amount), 2) AS total_commission,
             COUNT(*) AS record_count
      FROM sales_transactions
-     WHERE agent_id = ?`;
+     WHERE agent_id = ?
+       AND report_type IN ${POLICY_REPORT_TYPES}`;
   const params: unknown[] = [agentId];
 
   if (portfolioType !== 'all') {

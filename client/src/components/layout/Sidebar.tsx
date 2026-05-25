@@ -14,6 +14,7 @@ const navItems = [
   { to: '/potential', icon: 'auto_awesome', label: 'פוטנציאל מכירה' },
   { to: '/anomalies', icon: 'notification_important', label: 'חריגות' },
   { to: '/breakdown', icon: 'bar_chart', label: 'פירוט הכנסות' },
+  { to: '/targets', icon: 'flag', label: 'יעדים' },
   { to: '/upload', icon: 'upload_file', label: 'העלאת עמלות' },
   { to: '/monthly', icon: 'calendar_month', label: 'דוחות חודשיים' },
   { to: '/settings', icon: 'settings', label: 'הגדרות' },

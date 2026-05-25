@@ -10,6 +10,8 @@ export interface UserProfile {
   email: string;
   phone: string;
   licenseNumber: string;
+  licenseNumberPartners?: string | null;
+  idNumber?: string | null;
   role: string;
   taxStatus: 'self_employed' | 'employee';
   onboardingCompleted: boolean;
@@ -30,6 +32,7 @@ interface AuthState {
   clearError: () => void;
   completeOnboarding: () => void;
   setAgreementUploaded: () => void;
+  updateProfile: (patch: Partial<UserProfile>) => void;
 }
 
 const DEMO_PROFILE: UserProfile = {
@@ -88,6 +91,7 @@ export const useAuthStore = create<AuthState>()(
               email: agent.email,
               phone: agent.phone || '',
               licenseNumber: agent.licenseNumber || '',
+              licenseNumberPartners: agent.licenseNumberPartners ?? null,
               role: 'סוכן',
               taxStatus: (agent.taxStatus as 'self_employed' | 'employee') || 'self_employed',
               onboardingCompleted: hasSalesData,
@@ -150,6 +154,12 @@ export const useAuthStore = create<AuthState>()(
       setAgreementUploaded: () => {
         set((state) => ({
           profile: state.profile ? { ...state.profile, agreementUploaded: true } : null,
+        }));
+      },
+
+      updateProfile: (patch) => {
+        set((state) => ({
+          profile: state.profile ? { ...state.profile, ...patch } : null,
         }));
       },
 

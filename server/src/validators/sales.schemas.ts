@@ -1,6 +1,15 @@
 import { z } from 'zod';
 import { paginationQuerySchema } from './common.schemas.js';
 
+export const clientsQuerySchema = z.object({
+  search: z.string().optional(),
+  page: z.coerce.number().int().min(1).default(1),
+  pageSize: z.coerce.number().int().min(1).max(200).default(50),
+  portfolioType: z.enum(['personal', 'partners', 'all']).default('all'),
+});
+
+export type ClientsQuery = z.infer<typeof clientsQuerySchema>;
+
 const monthPattern = /^\d{4}-(0[1-9]|1[0-2])$/;
 
 export const summaryByTypeQuerySchema = z.object({

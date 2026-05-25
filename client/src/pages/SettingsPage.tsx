@@ -1,11 +1,12 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import Icon from '../components/ui/Icon';
 import CompanyLogo from '../components/common/CompanyLogo';
 import { useAuthStore } from '../store/authStore';
-import { useDataStore } from '../store/dataStore';
+import { usePortfolioFilterStore } from '../store/portfolioFilterStore';
 import CommissionRatesEditor from '../components/CommissionRatesEditor';
 import * as api from '../services/api';
-import { settingsApi } from '../services/api';
+import { settingsApi, salesApi } from '../services/api';
+import type { AnnualSnapshot } from '../services/api';
 
 const links = [
   { icon: 'download', title: 'לוח עמלות סוכנים - הראל ביטוח (PDF)', desc: 'עודכן לאחרונה: 01/01/2026' },
@@ -48,18 +49,106 @@ function buildInitialMap(): AgentNumbersMap {
   return map;
 }
 
+interface ProfileFormState {
+  name: string;
+  email: string;
+  phone: string;
+  licenseNumber: string;
+  licenseNumberPartners: string;
+  idNumber: string;
+}
+
 export default function SettingsPage() {
   const profile = useAuthStore((s) => s.profile);
-  const dashboard = useDataStore((s) => s.dashboard);
+  const updateProfile = useAuthStore((s) => s.updateProfile);
+  const portfolioFilter = usePortfolioFilterStore((s) => s.portfolioFilter);
+
+  const [annualSnapshot, setAnnualSnapshot] = useState<AnnualSnapshot | null>(null);
+  const [snapshotLoading, setSnapshotLoading] = useState(false);
   const displayName = profile?.name || 'משתמש חדש';
   const displayRole = profile?.role || 'סוכן';
-  const displayLicense = profile?.licenseNumber || '---';
-  const displayEmail = profile?.email || '---';
-  const displayPhone = profile?.phone || '---';
+  const displayLicense = profile?.licenseNumber || null;
+  const displayLicensePartners = profile?.licenseNumberPartners || null;
+  const displayEmail = profile?.email || null;
+  const displayPhone = profile?.phone || null;
+  const displayIdNumber = profile?.idNumber || null;
   const initials = displayName.slice(0, 2);
+
+  const [editModalOpen, setEditModalOpen] = useState(false);
+  const [profileForm, setProfileForm] = useState<ProfileFormState>({
+    name: profile?.name || '',
+    email: profile?.email || '',
+    phone: profile?.phone || '',
+    licenseNumber: profile?.licenseNumber || '',
+    licenseNumberPartners: profile?.licenseNumberPartners || '',
+    idNumber: profile?.idNumber || '',
+  });
+  const [profileSaving, setProfileSaving] = useState(false);
+  const [profileError, setProfileError] = useState<string | null>(null);
+  const firstInputRef = useRef<HTMLInputElement>(null);
 
   const [agentNumbers, setAgentNumbers] = useState<AgentNumbersMap>(buildInitialMap);
   const [agentNumbersLoading, setAgentNumbersLoading] = useState(false);
+
+  function openEditModal() {
+    setProfileForm({
+      name: profile?.name || '',
+      email: profile?.email || '',
+      phone: profile?.phone || '',
+      licenseNumber: profile?.licenseNumber || '',
+      licenseNumberPartners: profile?.licenseNumberPartners || '',
+      idNumber: profile?.idNumber || '',
+    });
+    setProfileError(null);
+    setEditModalOpen(true);
+    setTimeout(() => firstInputRef.current?.focus(), 50);
+  }
+
+  function closeEditModal() {
+    if (profileSaving) return;
+    setEditModalOpen(false);
+    setProfileError(null);
+  }
+
+  function handleFormChange(field: keyof ProfileFormState, value: string) {
+    setProfileForm((prev) => ({ ...prev, [field]: value }));
+  }
+
+  async function handleSaveProfile() {
+    if (!profile) return;
+    if (!profileForm.name.trim()) {
+      setProfileError('שם הוא שדה חובה');
+      return;
+    }
+    setProfileSaving(true);
+    setProfileError(null);
+    try {
+      const payload: api.UpdateAgentPayload = {
+        name: profileForm.name.trim(),
+        email: profileForm.email.trim() || undefined,
+        phone: profileForm.phone.trim() || undefined,
+        licenseNumber: profileForm.licenseNumber.trim() || undefined,
+        licenseNumberPartners: profileForm.licenseNumberPartners.trim() || null,
+        idNumber: profileForm.idNumber.trim() || null,
+      };
+      const res = await api.updateAgent(profile.id, payload);
+      if (res.data) {
+        updateProfile({
+          name: res.data.name,
+          email: res.data.email,
+          phone: res.data.phone,
+          licenseNumber: res.data.licenseNumber,
+          licenseNumberPartners: res.data.licenseNumberPartners ?? null,
+        });
+      }
+      setEditModalOpen(false);
+    } catch (err) {
+      const msg = err instanceof api.ApiError ? (err.serverError ?? 'שגיאה בשמירה') : 'שגיאה בשמירה';
+      setProfileError(msg);
+    } finally {
+      setProfileSaving(false);
+    }
+  }
 
   const [partnersSplitPct, setPartnersSplitPct] = useState<number>(50);
   const [partnersSplitSaving, setPartnersSplitSaving] = useState(false);
@@ -87,6 +176,25 @@ export default function SettingsPage() {
     loadPartnersSplit();
     return () => { cancelled = true; };
   }, []);
+
+  useEffect(() => {
+    let cancelled = false;
+    async function loadSnapshot() {
+      setSnapshotLoading(true);
+      try {
+        const res = await salesApi.getAnnualSnapshot({ portfolioType: portfolioFilter });
+        if (!cancelled && res.data) {
+          setAnnualSnapshot(res.data);
+        }
+      } catch {
+        // non-critical
+      } finally {
+        if (!cancelled) setSnapshotLoading(false);
+      }
+    }
+    loadSnapshot();
+    return () => { cancelled = true; };
+  }, [portfolioFilter]);
 
   async function handleSavePartnersSplit() {
     if (partnersSplitPct < 0 || partnersSplitPct > 100) {
@@ -224,25 +332,56 @@ export default function SettingsPage() {
                   <div className="w-32 h-32 rounded-full bg-primary-fixed-dim flex items-center justify-center text-primary font-headline text-4xl font-black">
                     {initials}
                   </div>
-                  <button className="absolute bottom-1 right-1 bg-primary text-white p-2 rounded-full shadow-lg hover:scale-110 transition-transform">
-                    <Icon name="edit" size="sm" />
-                  </button>
                 </div>
                 <h3 className="text-2xl font-bold text-on-surface mb-1">{displayName}</h3>
-                <p className="text-on-surface-variant mb-6">{displayRole}</p>
-                <div className="w-full space-y-4 text-right">
+                <p className="text-on-surface-variant mb-4">{displayRole}</p>
+                <button
+                  onClick={openEditModal}
+                  aria-label="ערוך פרופיל"
+                  className="mb-6 flex items-center gap-2 px-5 py-2.5 bg-primary text-white rounded-lg text-sm font-bold hover:opacity-90 transition-opacity shadow-sm"
+                >
+                  <Icon name="edit" size="sm" />
+                  ערוך פרופיל
+                </button>
+                <div className="w-full space-y-3 text-right">
                   <div className="bg-surface-container-low p-4 rounded-lg">
-                    <span className="text-xs text-on-surface-variant block mb-1">מספר רישיון</span>
-                    <span className="font-mono text-lg font-bold text-primary">{displayLicense}</span>
+                    <span className="text-xs text-on-surface-variant block mb-1">מספר רישיון אישי</span>
+                    {displayLicense ? (
+                      <span className="font-mono text-lg font-bold text-primary">{displayLicense}</span>
+                    ) : (
+                      <span className="text-sm text-on-surface-variant/60 italic">לא הוגדר</span>
+                    )}
+                  </div>
+                  <div className="bg-surface-container-low p-4 rounded-lg">
+                    <span className="text-xs text-on-surface-variant block mb-1">מספר רישיון שותפים</span>
+                    {displayLicensePartners ? (
+                      <span className="font-mono text-lg font-bold text-primary">{displayLicensePartners}</span>
+                    ) : (
+                      <span className="text-sm text-on-surface-variant/60 italic">לא הוגדר</span>
+                    )}
                   </div>
                   <div className="bg-surface-container-low p-4 rounded-lg">
                     <span className="text-xs text-on-surface-variant block mb-1">דוא&quot;ל עסקי</span>
-                    <span className="font-medium">{displayEmail}</span>
+                    {displayEmail ? (
+                      <span className="font-medium">{displayEmail}</span>
+                    ) : (
+                      <span className="text-sm text-on-surface-variant/60 italic">לא הוגדר</span>
+                    )}
                   </div>
                   <div className="bg-surface-container-low p-4 rounded-lg">
                     <span className="text-xs text-on-surface-variant block mb-1">טלפון</span>
-                    <span className="font-medium">{displayPhone}</span>
+                    {displayPhone ? (
+                      <span className="font-medium">{displayPhone}</span>
+                    ) : (
+                      <span className="text-sm text-on-surface-variant/60 italic">לא הוגדר</span>
+                    )}
                   </div>
+                  {displayIdNumber && (
+                    <div className="bg-surface-container-low p-4 rounded-lg">
+                      <span className="text-xs text-on-surface-variant block mb-1">תעודת זהות</span>
+                      <span className="font-medium">{displayIdNumber}</span>
+                    </div>
+                  )}
                 </div>
               </div>
             </section>
@@ -324,19 +463,49 @@ export default function SettingsPage() {
                       תמונת מצב שנתית
                     </span>
                   </div>
-                  <h4 className="text-3xl font-black mb-4 font-headline">
-                    +{dashboard.growthPct}% צמיחה בתיק המנוהל
-                  </h4>
-                  <div className="flex gap-4">
-                    <div className="bg-white/10 backdrop-blur-md rounded-lg p-4 flex-1">
-                      <p className="text-[10px] opacity-70 mb-1">פוליסות חדשות (רבעון)</p>
-                      <p className="text-xl font-bold">{dashboard.newPolicies}</p>
+
+                  {snapshotLoading ? (
+                    <div className="mb-4">
+                      <div className="h-8 w-64 bg-white/20 rounded animate-pulse mb-4" />
+                      <div className="flex gap-4">
+                        <div className="bg-white/10 rounded-lg p-4 flex-1 h-16 animate-pulse" />
+                        <div className="bg-white/10 rounded-lg p-4 flex-1 h-16 animate-pulse" />
+                        <div className="bg-white/10 rounded-lg p-4 flex-1 h-16 animate-pulse" />
+                      </div>
                     </div>
-                    <div className="bg-white/10 backdrop-blur-md rounded-lg p-4 flex-1">
-                      <p className="text-[10px] opacity-70 mb-1">יחס המרה</p>
-                      <p className="text-xl font-bold">{dashboard.conversionRate}%</p>
+                  ) : annualSnapshot === null || (
+                    annualSnapshot.growthPct === 0 &&
+                    annualSnapshot.newClientsLast3Months === 0 &&
+                    annualSnapshot.totalActiveClients === 0
+                  ) ? (
+                    <div className="mb-4">
+                      <h4 className="text-xl font-bold mb-2 opacity-80">טרם נטענו דוחות</h4>
+                      <p className="text-sm opacity-60">העלה דוחות עמלות כדי לצפות בתמונת המצב השנתית</p>
                     </div>
-                  </div>
+                  ) : (
+                    <>
+                      <h4 className="text-3xl font-black mb-4 font-headline">
+                        {annualSnapshot.growthPct >= 0
+                          ? <span>+{annualSnapshot.growthPct}% צמיחה בתיק המנוהל</span>
+                          : <span className="text-red-300">{annualSnapshot.growthPct}% צמיחה בתיק המנוהל</span>
+                        }
+                      </h4>
+                      <div className="flex gap-4">
+                        <div className="bg-white/10 backdrop-blur-md rounded-lg p-4 flex-1">
+                          <p className="text-[10px] opacity-70 mb-1">לקוחות חדשים (3 חודשים)</p>
+                          <p className="text-xl font-bold">{annualSnapshot.newClientsLast3Months}</p>
+                        </div>
+                        <div className="bg-white/10 backdrop-blur-md rounded-lg p-4 flex-1">
+                          <p className="text-[10px] opacity-70 mb-1">לקוחות פעילים סה"כ</p>
+                          <p className="text-xl font-bold">{annualSnapshot.totalActiveClients}</p>
+                        </div>
+                        <div className="bg-white/10 backdrop-blur-md rounded-lg p-4 flex-1">
+                          <p className="text-[10px] opacity-70 mb-1">שיעור שימור</p>
+                          <p className="text-xl font-bold">{annualSnapshot.retentionRate}%</p>
+                        </div>
+                      </div>
+                    </>
+                  )}
                 </div>
                 <div className="absolute right-0 bottom-0 opacity-10 translate-x-1/4 translate-y-1/4">
                   <Icon name="account_balance_wallet" className="text-[200px]" />
@@ -510,6 +679,156 @@ export default function SettingsPage() {
           <CommissionRatesEditor />
         </div>
       </div>
+
+      {/* Edit Profile Modal */}
+      {editModalOpen && (
+        <div
+          role="dialog"
+          aria-modal="true"
+          aria-label="עריכת פרופיל"
+          className="fixed inset-0 z-50 flex items-center justify-center p-4"
+        >
+          <div
+            className="absolute inset-0 bg-black/50"
+            onClick={closeEditModal}
+            aria-hidden="true"
+          />
+          <div className="relative bg-surface-container-lowest rounded-xl shadow-2xl w-full max-w-lg p-8 z-10">
+            <div className="flex items-center justify-between mb-6">
+              <h2 className="text-xl font-bold text-on-surface font-headline">עריכת פרופיל</h2>
+              <button
+                onClick={closeEditModal}
+                disabled={profileSaving}
+                aria-label="סגור חלון עריכת פרופיל"
+                className="p-2 rounded-full hover:bg-surface-container-low transition-colors text-on-surface-variant disabled:opacity-40"
+              >
+                <Icon name="close" size="sm" />
+              </button>
+            </div>
+
+            <div className="space-y-4">
+              <div>
+                <label htmlFor="profile-name" className="block text-sm font-semibold text-on-surface mb-1.5">
+                  שם מלא <span className="text-error">*</span>
+                </label>
+                <input
+                  ref={firstInputRef}
+                  id="profile-name"
+                  type="text"
+                  value={profileForm.name}
+                  onChange={(e) => handleFormChange('name', e.target.value)}
+                  aria-label="שם מלא"
+                  aria-required="true"
+                  className="w-full bg-surface border border-outline-variant/40 rounded-lg px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-primary/40 focus:border-primary"
+                />
+              </div>
+
+              <div>
+                <label htmlFor="profile-email" className="block text-sm font-semibold text-on-surface mb-1.5">
+                  דוא&quot;ל עסקי
+                </label>
+                <input
+                  id="profile-email"
+                  type="email"
+                  value={profileForm.email}
+                  onChange={(e) => handleFormChange('email', e.target.value)}
+                  aria-label="דואל עסקי"
+                  className="w-full bg-surface border border-outline-variant/40 rounded-lg px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-primary/40 focus:border-primary"
+                />
+              </div>
+
+              <div>
+                <label htmlFor="profile-phone" className="block text-sm font-semibold text-on-surface mb-1.5">
+                  טלפון
+                </label>
+                <input
+                  id="profile-phone"
+                  type="tel"
+                  value={profileForm.phone}
+                  onChange={(e) => handleFormChange('phone', e.target.value)}
+                  aria-label="מספר טלפון"
+                  className="w-full bg-surface border border-outline-variant/40 rounded-lg px-3 py-2.5 text-sm font-mono focus:outline-none focus:ring-2 focus:ring-primary/40 focus:border-primary"
+                />
+              </div>
+
+              <div className="grid grid-cols-2 gap-4">
+                <div>
+                  <label htmlFor="profile-license" className="block text-sm font-semibold text-on-surface mb-1.5">
+                    רישיון אישי
+                  </label>
+                  <input
+                    id="profile-license"
+                    type="text"
+                    value={profileForm.licenseNumber}
+                    onChange={(e) => handleFormChange('licenseNumber', e.target.value)}
+                    aria-label="מספר רישיון אישי"
+                    className="w-full bg-surface border border-outline-variant/40 rounded-lg px-3 py-2.5 text-sm font-mono focus:outline-none focus:ring-2 focus:ring-primary/40 focus:border-primary"
+                  />
+                </div>
+                <div>
+                  <label htmlFor="profile-license-partners" className="block text-sm font-semibold text-on-surface mb-1.5">
+                    רישיון שותפים
+                  </label>
+                  <input
+                    id="profile-license-partners"
+                    type="text"
+                    value={profileForm.licenseNumberPartners}
+                    onChange={(e) => handleFormChange('licenseNumberPartners', e.target.value)}
+                    aria-label="מספר רישיון שותפים"
+                    className="w-full bg-surface border border-outline-variant/40 rounded-lg px-3 py-2.5 text-sm font-mono focus:outline-none focus:ring-2 focus:ring-primary/40 focus:border-primary"
+                  />
+                </div>
+              </div>
+
+              <div>
+                <label htmlFor="profile-idnumber" className="block text-sm font-semibold text-on-surface mb-1.5">
+                  תעודת זהות
+                </label>
+                <input
+                  id="profile-idnumber"
+                  type="text"
+                  value={profileForm.idNumber}
+                  onChange={(e) => handleFormChange('idNumber', e.target.value)}
+                  aria-label="מספר תעודת זהות"
+                  inputMode="numeric"
+                  className="w-full bg-surface border border-outline-variant/40 rounded-lg px-3 py-2.5 text-sm font-mono focus:outline-none focus:ring-2 focus:ring-primary/40 focus:border-primary"
+                />
+              </div>
+            </div>
+
+            {profileError && (
+              <p role="alert" className="mt-4 text-sm text-error flex items-center gap-1.5">
+                <Icon name="error_outline" size="sm" />
+                {profileError}
+              </p>
+            )}
+
+            <div className="flex items-center justify-end gap-3 mt-6">
+              <button
+                onClick={closeEditModal}
+                disabled={profileSaving}
+                aria-label="בטל עריכה"
+                className="px-5 py-2.5 text-sm font-semibold text-on-surface-variant hover:bg-surface-container-low rounded-lg transition-colors disabled:opacity-40"
+              >
+                ביטול
+              </button>
+              <button
+                onClick={handleSaveProfile}
+                disabled={profileSaving}
+                aria-label="שמור שינויים בפרופיל"
+                className="px-6 py-2.5 bg-primary text-white rounded-lg text-sm font-bold hover:opacity-90 disabled:opacity-50 transition-opacity flex items-center gap-2"
+              >
+                {profileSaving ? (
+                  <div className="w-4 h-4 rounded-full border-2 border-white/30 border-t-white animate-spin" />
+                ) : (
+                  <Icon name="save" size="sm" />
+                )}
+                שמור
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

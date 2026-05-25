@@ -209,20 +209,6 @@ exports.uploadRouter.post('/parse', upload.single('file'), async (req, res, next
             res.status(400).json({ data: null, error: 'File is required (field name: file)', meta: null });
             return;
         }
-        const rawCompany = req.body.insuranceCompany?.trim() ?? '';
-        if (!rawCompany) {
-            res.status(400).json({ data: null, error: 'יש לבחור חברת ביטוח לפני העלאת קובץ', meta: null });
-            return;
-        }
-        if (!isValidCompanyCode(rawCompany)) {
-            res.status(400).json({
-                data: null,
-                error: `חברת ביטוח לא חוקית. ערכים מותרים: ${VALID_INSURANCE_COMPANIES.join(', ')}`,
-                meta: null,
-            });
-            return;
-        }
-        const insuranceCompanyCode = rawCompany;
         const ext = file.originalname.toLowerCase();
         const isZip = ext.endsWith('.zip');
         const isExcel = ext.endsWith('.xls') || ext.endsWith('.xlsx');
@@ -232,9 +218,27 @@ exports.uploadRouter.post('/parse', upload.single('file'), async (req, res, next
             res.status(400).json({ data: null, error: 'Supported formats: XLS, XLSX, ZIP, CSV, PDF', meta: null });
             return;
         }
-        const selectedLabel = COMPANY_CODE_TO_LABEL[insuranceCompanyCode];
+        const clientIsAgreement = req.body.isAgreement === 'true';
+        const isAgreementUpload = isPdfFile || clientIsAgreement;
+        const rawCompany = req.body.insuranceCompany?.trim() ?? '';
+        if (!isAgreementUpload) {
+            if (!rawCompany) {
+                res.status(400).json({ data: null, error: 'יש לבחור חברת ביטוח לפני העלאת קובץ', meta: null });
+                return;
+            }
+            if (!isValidCompanyCode(rawCompany)) {
+                res.status(400).json({
+                    data: null,
+                    error: `חברת ביטוח לא חוקית. ערכים מותרים: ${VALID_INSURANCE_COMPANIES.join(', ')}`,
+                    meta: null,
+                });
+                return;
+            }
+        }
+        const insuranceCompanyCode = isValidCompanyCode(rawCompany) ? rawCompany : null;
+        const selectedLabel = insuranceCompanyCode ? COMPANY_CODE_TO_LABEL[insuranceCompanyCode] : null;
         function buildCompanyMismatchWarning(detected) {
-            if (!detected || detected === selectedLabel)
+            if (!detected || !selectedLabel || detected === selectedLabel)
                 return null;
             return `החברה שזוהתה (${detected}) שונה מהבחירה שלך (${selectedLabel})`;
         }

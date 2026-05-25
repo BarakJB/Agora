@@ -59,6 +59,7 @@ export interface LoginResponse {
     email: string;
     phone: string;
     licenseNumber: string;
+    licenseNumberPartners?: string | null;
     taxStatus: string;
   };
 }
@@ -107,7 +108,17 @@ export interface Agent {
   email: string;
   phone: string;
   licenseNumber: string;
+  licenseNumberPartners?: string | null;
   taxStatus: string;
+}
+
+export interface UpdateAgentPayload {
+  name?: string;
+  email?: string;
+  phone?: string;
+  licenseNumber?: string;
+  licenseNumberPartners?: string | null;
+  idNumber?: string | null;
 }
 
 export function getAgents() {
@@ -116,6 +127,13 @@ export function getAgents() {
 
 export function getAgent(id: string) {
   return request<Agent>(`/agents/${id}`);
+}
+
+export function updateAgent(id: string, payload: UpdateAgentPayload) {
+  return request<Agent>(`/agents/${id}`, {
+    method: 'PUT',
+    body: JSON.stringify(payload),
+  });
 }
 
 // ─── Policies ────────────────────────────────────────────────
@@ -414,12 +432,27 @@ export interface ClientTransaction {
   reportType: string;
 }
 
-export function searchClients(search?: string, portfolioType?: string) {
+export interface ClientsPage {
+  items: ClientSummary[];
+  total: number;
+  page: number;
+  pageSize: number;
+  totalPages: number;
+}
+
+export function searchClients(params: {
+  search?: string;
+  page?: number;
+  pageSize?: number;
+  portfolioType?: string;
+}) {
   const qs = new URLSearchParams();
-  if (search) qs.set('search', search);
-  if (portfolioType && portfolioType !== 'all') qs.set('portfolioType', portfolioType);
+  if (params.search) qs.set('search', params.search);
+  if (params.page && params.page !== 1) qs.set('page', String(params.page));
+  if (params.pageSize && params.pageSize !== 50) qs.set('pageSize', String(params.pageSize));
+  if (params.portfolioType && params.portfolioType !== 'all') qs.set('portfolioType', params.portfolioType);
   const query = qs.toString();
-  return request<ClientSummary[]>(`/sales/clients${query ? `?${query}` : ''}`);
+  return request<ClientsPage>(`/sales/clients${query ? `?${query}` : ''}`);
 }
 
 export function getClientTransactions(clientId: string, portfolioType?: string) {
@@ -495,6 +528,14 @@ export function deleteAgentNumber(payload: {
   });
 }
 
+// ─── Annual Snapshot ─────────────────────────────────────────
+export interface AnnualSnapshot {
+  growthPct: number;
+  newClientsLast3Months: number;
+  totalActiveClients: number;
+  retentionRate: number;
+}
+
 // ─── Health ──────────────────────────────────────────────────
 export function healthCheck() {
   return request<{ status: string; timestamp: string }>('/../health');
@@ -547,19 +588,19 @@ export interface SalesSummaryByTypeResponse {
 
 export interface CompanyProductRow {
   branch: string;
-  productName: string;
-  nifraim: number;
-  hekef: number;
-  accumulation: number;
-  total: number;
+  product: string;
+  nifraimAmount: number;
+  hekefAmount: number;
+  accumulationAmount: number;
+  totalCommission: number;
   pctOfCompany: number;
 }
 
 export interface CompanyBreakdown {
   company: string;
-  total: number;
-  pctOfGrand: number;
-  monthlyAvg: number;
+  totalCommission: number;
+  monthlyAverage: number;
+  pctOfTotal: number;
   products: CompanyProductRow[];
 }
 
@@ -628,6 +669,16 @@ export const salesApi = {
     const qs = params?.portfolioType && params.portfolioType !== 'all' ? `?portfolioType=${params.portfolioType}` : '';
     return request<RevenueForecastResponse>(`/predictions/next-month${qs}`);
   },
+
+  getMonthlySalarySummary(params?: { portfolioType?: string }) {
+    const qs = params?.portfolioType && params.portfolioType !== 'all' ? `?portfolioType=${params.portfolioType}` : '';
+    return request<MonthlySalarySummary[]>(`/sales/summary${qs}`);
+  },
+
+  getAnnualSnapshot(params?: { portfolioType?: string }) {
+    const qs = params?.portfolioType && params.portfolioType !== 'all' ? `?portfolioType=${params.portfolioType}` : '';
+    return request<AnnualSnapshot>(`/sales/annual-snapshot${qs}`);
+  },
 };
 
 export const settingsApi = {
@@ -640,6 +691,37 @@ export const settingsApi = {
       method: 'PUT',
       body: JSON.stringify({ pct }),
     });
+  },
+};
+
+// ─── Targets ─────────────────────────────────────────────────
+import type { Target, TargetSuggestion, TargetProgress, TargetMetric, TargetPeriod } from '../types/targets';
+
+export const targetsApi = {
+  list() {
+    return request<Target[]>('/targets');
+  },
+
+  upsert(payload: { metric: TargetMetric; period: TargetPeriod; targetAmount: number }) {
+    return request<Target>('/targets', {
+      method: 'PUT',
+      body: JSON.stringify(payload),
+    });
+  },
+
+  delete(metric: TargetMetric, period: TargetPeriod) {
+    return request<{ deleted: boolean }>(`/targets/${metric}/${period}`, {
+      method: 'DELETE',
+    });
+  },
+
+  getSuggestions() {
+    return request<TargetSuggestion[]>('/targets/suggestions');
+  },
+
+  getProgress(month?: string) {
+    const qs = month ? `?month=${encodeURIComponent(month)}` : '';
+    return request<TargetProgress[]>(`/targets/progress${qs}`);
   },
 };
 

@@ -120,6 +120,7 @@ authRouter.post(
             name: agent.name,
             phone: (agent as Record<string, unknown>).phone || '',
             licenseNumber: (agent as Record<string, unknown>).licenseNumber || '',
+            licenseNumberPartners: (agent as Record<string, unknown>).licenseNumberPartners ?? null,
             taxStatus: (agent as Record<string, unknown>).taxStatus || 'self_employed',
             agreementUploaded: (agent as Record<string, unknown>).agreementUploaded === 1 || hasSalesData,
             hasSalesData,
