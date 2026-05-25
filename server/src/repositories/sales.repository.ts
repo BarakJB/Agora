@@ -1101,9 +1101,9 @@ export async function getAnnualSnapshot(
   const [growthRows, newClientRows, activeClientRows, retentionRows] = await Promise.all([
     pool.query<RowDataPacket[]>(
       `SELECT
-         SUM(CASE WHEN processing_month >= DATE_SUB(CURDATE(), INTERVAL 12 MONTH) THEN commission_amount ELSE 0 END) AS recent12,
-         SUM(CASE WHEN processing_month >= DATE_SUB(CURDATE(), INTERVAL 24 MONTH)
-                   AND processing_month < DATE_SUB(CURDATE(), INTERVAL 12 MONTH)
+         SUM(CASE WHEN processing_month >= DATE_FORMAT(DATE_SUB(CURDATE(), INTERVAL 12 MONTH), '%Y-%m') THEN commission_amount ELSE 0 END) AS recent12,
+         SUM(CASE WHEN processing_month >= DATE_FORMAT(DATE_SUB(CURDATE(), INTERVAL 24 MONTH), '%Y-%m')
+                   AND processing_month < DATE_FORMAT(DATE_SUB(CURDATE(), INTERVAL 12 MONTH), '%Y-%m')
              THEN commission_amount ELSE 0 END) AS prior12
        FROM sales_transactions
        WHERE agent_id = ?
@@ -1116,12 +1116,12 @@ export async function getAnnualSnapshot(
        WHERE s1.agent_id = ?
          AND s1.report_type IN ${POLICY_REPORT_TYPES}
          AND s1.insured_name IS NOT NULL AND s1.insured_name != ''
-         AND s1.processing_month >= DATE_SUB(CURDATE(), INTERVAL 3 MONTH)
+         AND s1.processing_month >= DATE_FORMAT(DATE_SUB(CURDATE(), INTERVAL 3 MONTH), '%Y-%m')
          AND NOT EXISTS (
            SELECT 1 FROM sales_transactions s2
            WHERE s2.agent_id = s1.agent_id
              AND s2.insured_name = s1.insured_name
-             AND s2.processing_month < DATE_SUB(CURDATE(), INTERVAL 3 MONTH)
+             AND s2.processing_month < DATE_FORMAT(DATE_SUB(CURDATE(), INTERVAL 3 MONTH), '%Y-%m')
          )${portfolioFilter.replace('portfolio_type', 's1.portfolio_type')}`,
       baseParams(),
     ),
@@ -1131,7 +1131,7 @@ export async function getAnnualSnapshot(
        WHERE agent_id = ?
          AND report_type IN ${POLICY_REPORT_TYPES}
          AND insured_name IS NOT NULL AND insured_name != ''
-         AND processing_month >= DATE_SUB(CURDATE(), INTERVAL 12 MONTH)${portfolioFilter}`,
+         AND processing_month >= DATE_FORMAT(DATE_SUB(CURDATE(), INTERVAL 12 MONTH), '%Y-%m')${portfolioFilter}`,
       baseParams(),
     ),
     pool.query<RowDataPacket[]>(
@@ -1144,7 +1144,7 @@ export async function getAnnualSnapshot(
          WHERE agent_id = ?
            AND report_type IN ${POLICY_REPORT_TYPES}
            AND insured_name IS NOT NULL AND insured_name != ''
-           AND processing_month < DATE_SUB(CURDATE(), INTERVAL 3 MONTH)${portfolioFilter}
+           AND processing_month < DATE_FORMAT(DATE_SUB(CURDATE(), INTERVAL 3 MONTH), '%Y-%m')${portfolioFilter}
        ) AS prev
        LEFT JOIN (
          SELECT DISTINCT insured_name
@@ -1152,7 +1152,7 @@ export async function getAnnualSnapshot(
          WHERE agent_id = ?
            AND report_type IN ${POLICY_REPORT_TYPES}
            AND insured_name IS NOT NULL AND insured_name != ''
-           AND processing_month >= DATE_SUB(CURDATE(), INTERVAL 3 MONTH)${portfolioFilter}
+           AND processing_month >= DATE_FORMAT(DATE_SUB(CURDATE(), INTERVAL 3 MONTH), '%Y-%m')${portfolioFilter}
        ) AS recent ON recent.insured_name = prev.insured_name`,
       portfolioType !== 'all'
         ? [agentId, portfolioType, agentId, portfolioType]
