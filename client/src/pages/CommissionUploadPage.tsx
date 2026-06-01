@@ -63,15 +63,11 @@ interface ParseMeta {
 }
 
 interface AgreementRate {
-  company: string;
-  agreementId: string | null;
-  agreementType: string;
   product: string;
-  commissionType: string;
-  rate: number;
-  yearRange: string | null;
-  isBookCommission: boolean;
-  notes: string | null;
+  commissionType: 'nifraim' | 'hekef';
+  company: string;
+  rate: number | null;
+  isFixedAmount?: boolean;
 }
 
 interface AgreementData {
@@ -79,8 +75,6 @@ interface AgreementData {
   detectedCompany: string | null;
   agentName: string | null;
   agentId: string | null;
-  validFrom: string | null;
-  validTo: string | null;
   fileName: string;
 }
 
@@ -124,6 +118,31 @@ export default function CommissionUploadPage() {
   const [agreementData, setAgreementData] = useState<AgreementData | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
+  const agreementMatrix = useMemo(() => {
+    if (!agreementData || agreementData.rates.length === 0) return null;
+
+    const companies: string[] = [];
+    const seenCompanies = new Set<string>();
+    const rowKeys: { product: string; commissionType: 'nifraim' | 'hekef' }[] = [];
+    const seenRows = new Set<string>();
+    const lookup = new Map<string, AgreementRate>();
+
+    for (const r of agreementData.rates) {
+      if (!seenCompanies.has(r.company)) {
+        seenCompanies.add(r.company);
+        companies.push(r.company);
+      }
+      const rowKey = `${r.product}|${r.commissionType}`;
+      if (!seenRows.has(rowKey)) {
+        seenRows.add(rowKey);
+        rowKeys.push({ product: r.product, commissionType: r.commissionType });
+      }
+      lookup.set(`${r.product}|${r.commissionType}|${r.company}`, r);
+    }
+
+    return { companies, rowKeys, lookup };
+  }, [agreementData]);
+
   function handleCompanySelect(code: InsuranceCompanyCode) {
     if (code === selectedCompany) return;
     setSelectedCompany(code);
@@ -166,11 +185,6 @@ export default function CommissionUploadPage() {
 
     if (!isExcel && !isCsv && !isZip && !isPdf) {
       setParseError('יש להעלות קובץ מסוג XLS, XLSX, ZIP, CSV או PDF בלבד');
-      return;
-    }
-
-    if (!isPdf && !selectedCompany) {
-      setParseError('בחר חברת ביטוח קודם');
       return;
     }
 
@@ -225,8 +239,6 @@ export default function CommissionUploadPage() {
           detectedCompany,
           agentName: json.meta?.agentName ?? null,
           agentId: json.meta?.agentId ?? null,
-          validFrom: json.meta?.validFrom ?? null,
-          validTo: json.meta?.validTo ?? null,
           fileName: file.name,
         });
         addUpload({
@@ -324,8 +336,11 @@ export default function CommissionUploadPage() {
 
               {/* Company Selection */}
               <div>
-                <p className="text-xs font-black uppercase tracking-widest text-on-surface-variant mb-3">
-                  בחר חברת ביטוח
+                <p className="text-xs font-black uppercase tracking-widest text-on-surface-variant mb-1">
+                  חברת ביטוח (אופציונלי)
+                </p>
+                <p className="text-xs text-on-surface-variant/70 mb-3">
+                  המערכת מזהה את החברה אוטומטית מהקובץ. בחר ידנית רק אם הזיהוי נכשל.
                 </p>
                 <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
                   {INSURANCE_COMPANIES.map((co) => {
@@ -420,11 +435,19 @@ export default function CommissionUploadPage() {
           {/* Agreement (PDF) Results */}
           {agreementData && (
             <section className="space-y-6">
-              <div className="flex items-center gap-3">
-                <Icon name="description" className="text-secondary" />
-                <h3 className="text-lg font-bold text-on-surface">
-                  זוהה הסכם עמלות — {agreementData.rates.length} תעריפים
-                </h3>
+              <div className="flex items-start justify-between gap-3">
+                <div className="flex items-center gap-3">
+                  <Icon name="description" className="text-secondary" />
+                  <div>
+                    <h3 className="text-lg font-bold text-on-surface leading-tight">
+                      הסכם עמלות{agreementData.agentName ? ` — ${agreementData.agentName}` : ''}
+                    </h3>
+                    <p className="text-xs text-on-surface-variant mt-0.5">
+                      {agreementData.agentId && <span className="font-mono me-3">ת.ז. {agreementData.agentId}</span>}
+                      <span>{agreementData.rates.length} תעריפים</span>
+                    </p>
+                  </div>
+                </div>
               </div>
 
               <div className="bg-secondary-container/30 border border-secondary/20 rounded-xl p-5">
@@ -432,11 +455,7 @@ export default function CommissionUploadPage() {
                   <Icon name="badge" className="text-secondary text-lg" />
                   <span className="font-bold text-on-surface text-sm">פרטי הסכם עמלות</span>
                 </div>
-                <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
-                  <div className="space-y-1">
-                    <p className="text-[10px] uppercase tracking-widest text-on-surface-variant font-headline">חברת ביטוח</p>
-                    <p className="font-bold text-on-surface">{agreementData.detectedCompany || '—'}</p>
-                  </div>
+                <div className="grid grid-cols-2 sm:grid-cols-3 gap-4">
                   <div className="space-y-1">
                     <p className="text-[10px] uppercase tracking-widest text-on-surface-variant font-headline">שם סוכן</p>
                     <p className="font-bold text-on-surface">{agreementData.agentName || '—'}</p>
@@ -446,42 +465,97 @@ export default function CommissionUploadPage() {
                     <p className="font-bold text-on-surface font-mono">{agreementData.agentId || '—'}</p>
                   </div>
                   <div className="space-y-1">
-                    <p className="text-[10px] uppercase tracking-widest text-on-surface-variant font-headline">תוקף</p>
-                    <p className="font-bold text-on-surface text-sm">
-                      {agreementData.validFrom || '—'}{agreementData.validTo ? ` — ${agreementData.validTo}` : ''}
-                    </p>
+                    <p className="text-[10px] uppercase tracking-widest text-on-surface-variant font-headline">מספר תעריפים</p>
+                    <p className="font-bold text-on-surface">{agreementData.rates.length.toLocaleString('he-IL')}</p>
                   </div>
                 </div>
               </div>
 
-              {agreementData.rates.length === 0 ? (
+              {agreementData.rates.length === 0 || !agreementMatrix ? (
                 <div className="bg-surface-container-lowest rounded-lg p-8 text-center text-on-surface-variant">
                   לא חולצו תעריפים מההסכם. ייתכן שהפורמט אינו נתמך עדיין.
                 </div>
               ) : (
-                <div className="bg-surface-container-lowest rounded-lg overflow-hidden">
-                  <div className="overflow-x-auto max-h-96 overflow-y-auto">
-                    <table className="w-full text-right text-sm">
-                      <caption className="sr-only">תעריפי הסכם עמלות</caption>
-                      <thead className="sticky top-0">
+                <div className="bg-surface-container-lowest rounded-lg overflow-hidden shadow-editorial">
+                  <div className="overflow-x-auto">
+                    <table className="text-right text-sm border-collapse" style={{ minWidth: `${(agreementMatrix.companies.length + 2) * 120}px` }}>
+                      <caption className="sr-only">מטריצת תעריפי הסכם עמלות — כל המוצרים וכל החברות</caption>
+                      <thead className="sticky top-0 z-20">
                         <tr className="bg-surface-container text-[10px] uppercase tracking-widest text-on-surface-variant font-headline">
-                          <th className="px-4 py-3">מוצר</th>
-                          <th className="px-4 py-3">סוג עמלה</th>
-                          <th className="px-4 py-3">שנים</th>
-                          <th className="px-4 py-3">סוג</th>
-                          <th className="px-4 py-3">שיעור</th>
+                          <th
+                            scope="col"
+                            className="sticky end-0 z-30 bg-surface-container px-4 py-3 border-b border-e border-outline-variant/40 min-w-[130px] font-bold"
+                          >
+                            מוצר
+                          </th>
+                          <th
+                            scope="col"
+                            className="sticky end-[130px] z-30 bg-surface-container px-4 py-3 border-b border-e border-outline-variant/40 min-w-[100px] font-bold"
+                          >
+                            סוג עמלה
+                          </th>
+                          {agreementMatrix.companies.map((co) => (
+                            <th
+                              key={co}
+                              scope="col"
+                              className="px-4 py-3 border-b border-outline-variant/40 font-bold min-w-[100px] whitespace-nowrap"
+                            >
+                              {co}
+                            </th>
+                          ))}
                         </tr>
                       </thead>
                       <tbody>
-                        {agreementData.rates.map((r, i) => (
-                          <tr key={i} className="hover:bg-surface-container-low transition-colors">
-                            <td className="px-4 py-3 font-medium">{r.product}</td>
-                            <td className="px-4 py-3">{r.commissionType}</td>
-                            <td className="px-4 py-3">{r.yearRange || '—'}</td>
-                            <td className="px-4 py-3 text-xs">{r.isBookCommission ? 'עמלת ספר' : (r.notes || '—')}</td>
-                            <td className="px-4 py-3 font-bold text-secondary">{(r.rate * 100).toFixed(2)}%</td>
-                          </tr>
-                        ))}
+                        {agreementMatrix.rowKeys.map((row, rowIdx) => {
+                          const isLastOfProduct =
+                            rowIdx === agreementMatrix.rowKeys.length - 1 ||
+                            agreementMatrix.rowKeys[rowIdx + 1].product !== row.product;
+                          const isFirstOfProduct =
+                            rowIdx === 0 || agreementMatrix.rowKeys[rowIdx - 1].product !== row.product;
+                          const productRowspan = agreementMatrix.rowKeys.filter((r) => r.product === row.product).length;
+
+                          return (
+                            <tr
+                              key={`${row.product}|${row.commissionType}`}
+                              className={`hover:bg-surface-container-low/60 transition-colors ${isLastOfProduct ? 'border-b border-outline-variant/30' : ''}`}
+                            >
+                              {isFirstOfProduct && (
+                                <td
+                                  rowSpan={productRowspan}
+                                  className="sticky end-0 z-10 bg-surface-container-lowest px-4 py-3 font-bold text-on-surface border-e border-outline-variant/40 align-middle"
+                                  style={{ verticalAlign: 'middle' }}
+                                >
+                                  {row.product}
+                                </td>
+                              )}
+                              <td className="sticky end-[130px] z-10 bg-surface-container-lowest px-4 py-3 text-on-surface-variant border-e border-outline-variant/40 whitespace-nowrap">
+                                {row.commissionType === 'nifraim' ? 'נפרעים' : 'היקף'}
+                              </td>
+                              {agreementMatrix.companies.map((co) => {
+                                const entry = agreementMatrix.lookup.get(`${row.product}|${row.commissionType}|${co}`);
+                                if (!entry || entry.rate === null || entry.rate === undefined) {
+                                  return (
+                                    <td key={co} className="px-4 py-3 text-center text-on-surface-variant/40">
+                                      —
+                                    </td>
+                                  );
+                                }
+                                if (entry.isFixedAmount) {
+                                  return (
+                                    <td key={co} className="px-4 py-3 text-center font-bold text-secondary whitespace-nowrap">
+                                      {`₪${entry.rate.toLocaleString('he-IL')}`}
+                                    </td>
+                                  );
+                                }
+                                return (
+                                  <td key={co} className="px-4 py-3 text-center font-bold text-secondary whitespace-nowrap">
+                                    {`${(entry.rate * 100).toLocaleString('he-IL', { maximumFractionDigits: 2 })}%`}
+                                  </td>
+                                );
+                              })}
+                            </tr>
+                          );
+                        })}
                       </tbody>
                     </table>
                   </div>
@@ -794,8 +868,8 @@ export default function CommissionUploadPage() {
               זיהוי אוטומטי
             </h4>
             <p className="text-on-surface-variant text-sm leading-relaxed">
-              המערכת מזהה אוטומטית את סוג הדוח לפי שם הגיליון באקסל.
-              אין צורך לבחור סוג ידנית — פשוט העלה את הקובץ כפי שקיבלת אותו מחברת הביטוח.
+              המערכת מזהה אוטומטית את חברת הביטוח ואת סוג הדוח לפי תוכן הקובץ.
+              פשוט העלה את הקובץ כפי שקיבלת אותו — בחירת חברה ידנית נדרשת רק אם הזיהוי האוטומטי נכשל.
             </p>
           </div>
 

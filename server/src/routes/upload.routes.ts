@@ -285,21 +285,6 @@ uploadRouter.post('/parse', upload.single('file'), async (req, res, next) => {
 
     const rawCompany = (req.body.insuranceCompany as string | undefined)?.trim() ?? '';
 
-    if (!isAgreementUpload) {
-      if (!rawCompany) {
-        res.status(400).json({ data: null, error: 'יש לבחור חברת ביטוח לפני העלאת קובץ', meta: null });
-        return;
-      }
-      if (!isValidCompanyCode(rawCompany)) {
-        res.status(400).json({
-          data: null,
-          error: `חברת ביטוח לא חוקית. ערכים מותרים: ${VALID_INSURANCE_COMPANIES.join(', ')}`,
-          meta: null,
-        });
-        return;
-      }
-    }
-
     const insuranceCompanyCode: InsuranceCompanyCode | null = isValidCompanyCode(rawCompany) ? rawCompany : null;
     const selectedLabel = insuranceCompanyCode ? COMPANY_CODE_TO_LABEL[insuranceCompanyCode] : null;
 
@@ -405,17 +390,29 @@ uploadRouter.post('/parse', upload.single('file'), async (req, res, next) => {
 
     // Try commission reports first, fallback to agreement parser
     let results;
-    let isAgreement = false;
-    let agreementAgentNumber: string | null = null;
-    let agreementAgentTaxId: string | null = null;
     let portfolioSummary = { personal: 0, partners: 0, unknown: 0 };
     let mismatchWarning: string | null = null;
 
     try {
       results = parseExcelBuffer(file.buffer);
 
-      if (agentId && insuranceCompanyCode) {
-        const insuranceCompanyId = await resolveInsuranceCompanyId(insuranceCompanyCode);
+      // Determine effective company: auto-detected takes priority, explicit selection is fallback
+      const detectedCompanyRaw = results.find((r) => r.detectedCompany)?.detectedCompany ?? null;
+
+      const selectedHebrewName = insuranceCompanyCode ? COMPANY_CODE_TO_DETECTED[insuranceCompanyCode] : null;
+      const effectiveCompanyName: string | null = detectedCompanyRaw ?? selectedHebrewName;
+
+      if (!effectiveCompanyName) {
+        res.status(400).json({
+          data: null,
+          error: 'לא זוהתה חברת ביטוח בקובץ. בחר חברת ביטוח ידנית.',
+          meta: null,
+        });
+        return;
+      }
+
+      if (agentId) {
+        const insuranceCompanyId = await resolveInsuranceCompanyId(effectiveCompanyName);
         if (insuranceCompanyId) {
           const knownNumbers = await getAgentNumbersByCompany(agentId, insuranceCompanyId);
           const hasRegisteredNumbers = knownNumbers.personal !== undefined || knownNumbers.partners !== undefined;
@@ -462,25 +459,24 @@ uploadRouter.post('/parse', upload.single('file'), async (req, res, next) => {
       // Not a commission file — try agreement parser
       try {
         const agreement = parseAgreementFile(file.buffer);
-        isAgreement = true;
-        agreementAgentNumber = agreement.agentNumber;
-        agreementAgentTaxId = agreement.agentTaxId;
+
+        // Always verify ת.ז. regardless of company selection
+        if (agentId && agreement.agentTaxId) {
+          const agent = await getAgentById(agentId);
+          if (agent && agent.agentId !== agreement.agentTaxId) {
+            res.status(403).json({
+              data: null,
+              error: `ת.ז. בהסכם (${agreement.agentTaxId}) אינה תואמת לסוכן המחובר`,
+              meta: null,
+            });
+            return;
+          }
+        }
 
         // Save agent-company mapping when agentId + company are known
         if (agentId && insuranceCompanyCode) {
           const insuranceCompanyId = await resolveInsuranceCompanyId(insuranceCompanyCode);
           if (insuranceCompanyId && agreement.agentNumber) {
-            // Verify ת.ז. in file matches authenticated agent
-            const agent = await getAgentById(agentId);
-            if (agent && agreement.agentTaxId && agent.agentId !== agreement.agentTaxId) {
-              res.status(403).json({
-                data: null,
-                error: `ת.ז. בהסכם (${agreement.agentTaxId}) אינה תואמת לסוכן המחובר`,
-                meta: null,
-              });
-              return;
-            }
-
             const registered = await getRegisteredAgentNumber(agentId, insuranceCompanyId);
             if (registered !== null && registered.companyAgentNumber !== agreement.agentNumber) {
               res.status(403).json({
@@ -494,48 +490,22 @@ uploadRouter.post('/parse', upload.single('file'), async (req, res, next) => {
           }
         }
 
-        results = [{
-          reportType: 'agreement' as const,
-          sheetName: 'הסכם עמלות',
-          records: agreement.rates.map((r) => ({
-            id: '',
-            reportType: 'agreement' as const,
-            agentNumber: agreement.agentNumber,
+        res.json({
+          data: agreement.rates,
+          error: null,
+          meta: {
+            fileName: file.originalname,
+            fileSize: file.size,
+            isAgreement: true,
+            detectedCompany: null,
             agentName: agreement.agentName,
-            policyNumber: null,
-            branch: r.product,
-            subBranch: r.commissionType,
-            productName: r.company,
-            premiumBase: null,
-            amount: r.rate ?? 0,
-            rate: r.rate,
-            collectionFee: null,
-            advanceAmount: null,
-            advanceBalance: null,
-            amountBeforeVat: null,
-            amountWithVat: null,
-            accumulationBalance: null,
-            managementFeePct: null,
-            managementFeeAmount: null,
-            transactionType: r.isFixedAmount ? 'fixed' : 'percentage',
-            commissionSource: null,
-            employerName: null,
-            employerId: null,
-            insuredName: null,
-            insuredId: null,
-            productionMonth: null,
-            processingMonth: null,
-            fundType: null,
-            planType: null,
-            paymentAmount: null,
-            contractNumber: null,
-            rawRow: {},
-          })),
-          errors: [],
-          totalRows: agreement.rates.length,
-          skippedRows: 0,
-          detectedCompany: null,
-        }];
+            agentId: agreement.agentTaxId,
+            agentNumber: agreement.agentNumber,
+            totalRates: agreement.rates.length,
+            warning: null,
+          },
+        });
+        return;
       } catch {
         // Neither commission nor agreement
         const msg = commissionErr instanceof Error ? commissionErr.message : 'Unknown file format';
@@ -558,10 +528,10 @@ uploadRouter.post('/parse', upload.single('file'), async (req, res, next) => {
         sheetsDetected: results.length,
         totalRecords,
         totalErrors,
-        isAgreement,
+        isAgreement: false,
         detectedCompany,
-        agentNumber: agreementAgentNumber,
-        agentTaxId: agreementAgentTaxId,
+        agentNumber: null,
+        agentTaxId: null,
         portfolioSummary,
         mismatchWarning,
         warning: companyMismatch,

@@ -43,7 +43,8 @@ export default function Sidebar({ mobileOpen, onClose }: { mobileOpen: boolean; 
           mobileOpen ? 'translate-x-0' : 'translate-x-full lg:translate-x-0',
         )}
       >
-        <div className="p-8">
+        {/* Header — קבוע למעלה */}
+        <div className="p-8 pb-0 shrink-0">
           <div className="flex items-center gap-3 mb-8">
             <div className="w-10 h-10 bg-primary rounded-lg flex items-center justify-center">
               <Icon name="account_balance" className="text-white" size="sm" />
@@ -56,39 +57,41 @@ export default function Sidebar({ mobileOpen, onClose }: { mobileOpen: boolean; 
 
           <button
             onClick={() => setShowNewPolicy(true)}
-            className="w-full bg-primary-container text-white py-3 px-4 rounded-lg font-semibold flex items-center justify-center gap-2 mb-8 hover:opacity-90 transition-opacity"
+            className="w-full bg-primary-container text-white py-3 px-4 rounded-lg font-semibold flex items-center justify-center gap-2 mb-4 hover:opacity-90 transition-opacity"
           >
             <Icon name="add" size="sm" />
             <span>פוליסה חדשה</span>
           </button>
-
-          <nav className="space-y-2">
-            {navItems.map((item) => (
-              <NavLink
-                key={item.to}
-                to={item.to}
-                onClick={onClose}
-                className={({ isActive }) =>
-                  clsx(
-                    'flex items-center gap-4 px-4 py-3 transition-colors rounded-lg',
-                    isActive
-                      ? 'text-primary font-semibold bg-surface-container-high'
-                      : 'text-on-surface-variant hover:text-primary hover:bg-surface-container'
-                  )
-                }
-              >
-                {({ isActive }) => (
-                  <>
-                    <Icon name={item.icon} filled={isActive} />
-                    <span className="font-medium">{item.label}</span>
-                  </>
-                )}
-              </NavLink>
-            ))}
-          </nav>
         </div>
 
-        <div className="mt-auto p-8 pt-6">
+        {/* ניווט — גלילה פנימית */}
+        <nav className="flex-1 overflow-y-auto px-8 py-4 space-y-2">
+          {navItems.map((item) => (
+            <NavLink
+              key={item.to}
+              to={item.to}
+              onClick={onClose}
+              className={({ isActive }) =>
+                clsx(
+                  'flex items-center gap-4 px-4 py-3 transition-colors rounded-lg',
+                  isActive
+                    ? 'text-primary font-semibold bg-surface-container-high'
+                    : 'text-on-surface-variant hover:text-primary hover:bg-surface-container'
+                )
+              }
+            >
+              {({ isActive }) => (
+                <>
+                  <Icon name={item.icon} filled={isActive} />
+                  <span className="font-medium">{item.label}</span>
+                </>
+              )}
+            </NavLink>
+          ))}
+        </nav>
+
+        {/* Footer — קבוע בתחתית, תמיד נראה */}
+        <div className="shrink-0 p-8 pt-4 border-t border-outline-variant/20">
           <nav className="space-y-2">
             <a href="#" className="flex items-center gap-4 px-4 py-2 text-on-surface-variant hover:text-primary transition-colors">
               <Icon name="help" />
